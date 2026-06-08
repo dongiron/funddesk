@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git --version)",
+      "Read(//usr/local/bin/**)",
+      "Read(//Users/josegiron/.nvm/versions/**)",
+      "Bash(command -v npx)",
+      "Bash(ls /usr/local/bin/ | grep -E \"node|npm|npx\"; ls /opt/homebrew/bin/ | grep -E \"node|npm|npx\")",
+      "Bash(npm --version)"
+    ]
+  }
+}
