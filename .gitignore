@@ -27,6 +27,9 @@
 # claude code
 .claude/
 
+# supabase
+supabase/.temp/
+
 # debug
 npm-debug.log*
 yarn-debug.log*
