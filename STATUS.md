@@ -35,3 +35,19 @@ These features represent significant value-add beyond the core funding workflow.
 **Document authenticity verification.** ML-based detection of digitally altered paystubs, bank statements, and other customer-provided documents. Triggers when stips are uploaded. Distinct from identity verification — focuses on document tampering rather than identity validity. Vendor candidates: Mitek, Persona, Jumio, Inscribe (specializes in financial docs), Ocrolus (specializes in income verification). Same pricing model considerations as above.
 
 **Pricing strategy implication.** These features support a tiered pricing model from day one — "FundDesk Core" at base price with the funding workflow, "FundDesk Pro" or "FundDesk + Verification" at a premium tier with identity + document verification bundled. Plan tier structure during phase one customer conversations; don't commit to specific tier names or prices until we have signal from real prospects.
+
+## Architecture Decisions Log
+
+Significant architectural decisions made during the build, with rationale. Add to this list whenever a decision is made that future-Don or a future engineer might need to understand the reasoning behind.
+
+**Decision: Multi-tenancy via row-level security on every business table.** RLS policies enforce tenant isolation at the database layer rather than only at the application layer. Cost: more complex policy writing. Benefit: tenant data isolation cannot be bypassed by an application bug. Decided at migration 0001.
+
+**Decision: Soft delete with `deleted_at` on all business tables.** Hard deletes prohibited by RLS policies returning silent failure. Cost: every query must filter `deleted_at IS NULL`. Benefit: right-to-delete, undo-ability, audit-trail preservation. Decided at migration 0001.
+
+**Decision: Append-only audit log.** No UPDATE or DELETE policies on `audit_log`. Rows are insert-only forever. Benefit: tamper-evident audit trail, compliance asset, legal defense in disputes. Decided at migration 0001.
+
+**Decision: Multiple simultaneous deal blocks via separate `deal_blocks` table (not a single `current_block` column on deals).** Subprime deals routinely have multiple things wrong simultaneously; single-block model loses information. Cost: more complex queries. Benefit: accurate operational reality. Decided at migration 0003.
+
+**Decision: Signing method (e-sign vs paper) as dealership-level configuration, not per-deal.** Dealerships don't switch methods deal-by-deal. Cost: rare edge case where a dealer occasionally does both (`mixed` value handles this). Benefit: cleaner per-deal workflow. Decided at migration 0002.
+
+**Decision: Lender holds tracked as block type, not pipeline state.** A lender hold doesn't change the deal's pipeline position (the deal is still funded-in-transit); it's an exception condition that gets resolved. Cost: requires inspecting blocks to know "is this deal actually clear?" Benefit: holds tied to specific reasons, multiple deals can share a root cause. Decided during migration 0002 design.
