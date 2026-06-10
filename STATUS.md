@@ -57,3 +57,7 @@ Significant architectural decisions made during the build, with rationale. Add t
 **First-user-at-new-dealership flow.** Current state: manually bootstrap via SQL editor in Supabase dashboard (insert `dealerships` row, then `users` row referencing the new dealership). This works for Don as tenant one but does not scale. Before onboarding customer two, design a proper server action that uses the Supabase service role key to atomically create a new dealership and its initial owner user, triggered by a signup flow that captures dealership name and other onboarding info. Estimate: half-day of work. Must be done before any new dealer can sign up.
 
 **`users` insert policy creates chicken-and-egg.** Current insert policy on `public.users` requires the inserter to already be an owner or manager. Self-signup by a new user with no prior dealership cannot insert. The service-role onboarding flow above bypasses this. Document this dependency clearly in the onboarding code.
+
+## Application-level Conventions
+
+**`sold_date` must be set explicitly from the client's local timezone (America/Phoenix).** Do not rely on the database `CURRENT_DATE` default, which uses UTC and can be off by one day for late-evening Arizona deals. Always compute `sold_date` from the client's local date and pass it explicitly when creating a deal.
