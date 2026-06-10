@@ -3,8 +3,10 @@
 ## What's Working
 - Next.js 16 scaffolding with TypeScript, Tailwind, shadcn/ui
 - Supabase Auth (email/password sign-in, sign-up, sign-out)
-- Multi-tenant schema with RLS enforced (dealerships, users, lenders, deals, audit_log)
-- Migration 0001 applied to funddesk-dev
+- Multi-tenant schema with RLS enforced (dealerships, users, lenders, deals, audit_log, deal_blocks)
+- Migration 0001 applied to funddesk-dev — initial schema (5 tables, RLS, triggers)
+- Migration 0002 applied to funddesk-dev — dealership signing config, pipeline state, vehicle/financial/date/trade fields
+- Migration 0003 applied to funddesk-dev — deal_blocks (multi-block triage, verified with test open + resolution)
 - First user bootstrapped (owner role)
 - Protected dashboard route at /dashboard (placeholder UI)
 - Session middleware refreshing auth on every request
@@ -12,7 +14,6 @@
 ## Not Yet Built
 - Lender list UI (read/create/edit)
 - Deal list / board UI
-- Triage state model (will be migration 0002)
 - Customer message drafting via Claude API
 - Multi-user invitation flow
 - Onboarding flow for new dealerships (currently requires SQL bootstrap)
@@ -22,9 +23,8 @@
 - `users` insert policy requires existing owner/manager — chicken-and-egg for new dealerships (same issue as above)
 
 ## Next Session Plan
-1. Migration 0002: extend `deals` with full state model (pipeline_state, triage_block_state, financial fields, vehicle fields, dates)
-2. Migration 0003: extend `lenders` with typical_days_to_fund, overdue_threshold_days, ghost_patterns notes
-3. Build lender list UI as first real feature page
+1. Migration 0004: extend `lenders` with typical_days_to_fund, overdue_threshold_days, ghost_patterns notes
+2. Build lender list UI as first real feature page
 
 ## Future Premium Features (Not in Phase One)
 
