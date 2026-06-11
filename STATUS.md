@@ -61,3 +61,7 @@ Significant architectural decisions made during the build, with rationale. Add t
 ## Application-level Conventions
 
 **`sold_date` must be set explicitly from the client's local timezone (America/Phoenix).** Do not rely on the database `CURRENT_DATE` default, which uses UTC and can be off by one day for late-evening Arizona deals. Always compute `sold_date` from the client's local date and pass it explicitly when creating a deal.
+
+**Lender name normalization.** In server actions for creating or updating lenders, always trim whitespace before insert. The database unique constraint on `(dealership_id, name)` is case- and whitespace-sensitive; application-layer normalization prevents accidental duplicates like `"America First"` vs `"America First "`.
+
+**Lender configuration completeness.** `typical_days_clean` and `overdue_threshold_days` are nullable. NULL means "not yet researched/configured." The triage brain should treat lenders with NULL speed columns as "unknown timing" and not generate overdue alerts until they're configured.
