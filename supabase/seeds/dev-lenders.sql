@@ -31,18 +31,17 @@
 --     VERBATIM (no rewording), for in-app reference.
 --
 -- OPEN QUESTIONS / THINGS TO VERIFY (see report for detail):
---   1. Credit Acceptance Corp.: the "lender fee increase" bullet in
---      the doc sits under Credit Acceptance but its content
---      ("Westlake only clears income during funding", "Within
---      Dealercenter funding portal") describes Westlake. We set
---      can_increase_lender_fee = TRUE for Westlake and LEFT IT
---      DEFAULT (false) for Credit Acceptance. Confirm intent.
+--   1. [RESOLVED] Credit Acceptance Corp.: the "lender fee increase"
+--      bullet in the doc sits under Credit Acceptance but its content
+--      references Westlake's Dealercenter. can_increase_lender_fee is
+--      TRUE for Westlake; operator confirmed it is ALSO TRUE for
+--      Credit Acceptance (fees increase on deal-structure changes).
 --   2. accepts_esign defaults TRUE. For the credit unions where the
 --      doc is silent on e-sign, this seed leaves the default (true)
 --      in place — i.e. "assumed", not "confirmed". Verify per CU.
---   3. Credit Union Of Colorado: platform not explicitly named in
---      the doc (uses CUDL-style "Fund delay" wording). We OMITTED
---      communication_platform rather than infer "CUDL". Confirm.
+--   3. [RESOLVED] Credit Union Of Colorado: platform not explicitly
+--      named in the doc (uses CUDL-style "Fund delay" wording).
+--      Operator confirmed CUDL; communication_platform = 'CUDL'.
 --   4. Hughes: "membership documents require wet signature" has no
 --      structured column (it is about membership docs, not the
 --      retail contract), so requires_physical_contract was NOT set.
@@ -81,12 +80,13 @@ Funds in bank next business day'
 --    set: typical_days_clean, clears_stips_upfront, operator_notes
 --    (communication_platform omitted — not explicitly named; see open Q3)
 INSERT INTO public.lenders
-  (dealership_id, name, typical_days_clean, clears_stips_upfront, operator_notes)
+  (dealership_id, name, typical_days_clean, clears_stips_upfront, communication_platform, operator_notes)
 VALUES (
   '<YOUR_DEALERSHIP_ID>',
   'Credit Union Of Colorado',
   4,
   true,
+  'CUDL',
   'If limited term DL, need permanent resident card
 Funding time around 4-5 days. If no message from Funding rep after 3 days ok to send message for updates on funding
 Clears stips upfront
@@ -207,18 +207,20 @@ Does have floating title limit of 8 at a time. So if we have 8 titles that have 
 
 -- 8. Credit Acceptance Corp.
 --    set: clears_stips_upfront, days_to_bank_after_funding,
---         communication_platform, operator_notes
+--         can_increase_lender_fee, communication_platform, operator_notes
 --    (does_welcome_calls left default false: doc says "Does not do welcome calls")
 --    (does_employment_verification left default false: doc says "rarely")
---    (can_increase_lender_fee left DEFAULT — the fee bullet describes Westlake; see open Q1)
+--    (can_increase_lender_fee TRUE — operator confirms CA increases fees on
+--     deal-structure changes; see Q1 resolution.)
 INSERT INTO public.lenders
   (dealership_id, name, clears_stips_upfront, days_to_bank_after_funding,
-   communication_platform, operator_notes)
+   can_increase_lender_fee, communication_platform, operator_notes)
 VALUES (
   '<YOUR_DEALERSHIP_ID>',
   'Credit Acceptance Corp.',
   true,
   1,
+  true,
   'Own portal (Credit Acceptance website)',
   'Clears stips upfront
 Need to reach out to Bank Rep for funding
