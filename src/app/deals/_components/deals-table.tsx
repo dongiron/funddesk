@@ -1,13 +1,14 @@
 "use client"
 
 import { useState } from "react"
-import { PencilIcon, PlusIcon, Undo2Icon } from "lucide-react"
+import { PencilIcon, PlusIcon, TriangleAlertIcon, Undo2Icon } from "lucide-react"
 import {
   daysSinceSold,
   PIPELINE_STATE_LABELS,
   type Deal,
   type LenderOption,
 } from "../deal-schema"
+import type { DealWithBlocks } from "../block-schema"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -27,6 +28,7 @@ import {
 } from "@/components/ui/sheet"
 import { DealForm } from "./deal-form"
 import { UnwindDealDialog } from "./unwind-deal-dialog"
+import { BlocksSheet } from "./blocks-sheet"
 
 const currency = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -50,20 +52,33 @@ function vehicle(d: Deal): string {
   return v || "—"
 }
 
+function activeBlockCount(d: DealWithBlocks): number {
+  return d.blocks.filter((b) => b.resolved_at === null).length
+}
+
 export function DealsTable({
   deals,
   lenders,
   canMutate,
+  blockStats,
+  userNames,
 }: {
-  deals: Deal[]
+  deals: DealWithBlocks[]
   lenders: LenderOption[]
   canMutate: boolean
+  blockStats: { total: number; withBlocks: number }
+  userNames: Record<string, string>
 }) {
   const [editing, setEditing] = useState<Deal | "create" | null>(null)
   const [unwindTarget, setUnwindTarget] = useState<Deal | null>(null)
+  const [blocksTargetId, setBlocksTargetId] = useState<string | null>(null)
 
   const sheetOpen = editing !== null
   const editingDeal = editing === "create" ? undefined : (editing ?? undefined)
+  // Derive from the live deals so the sheet reflects fresh blocks after revalidate.
+  const blocksDeal = blocksTargetId
+    ? (deals.find((d) => d.id === blocksTargetId) ?? null)
+    : null
 
   return (
     <div className="space-y-4">
@@ -74,6 +89,12 @@ export function DealsTable({
             Add deal
           </Button>
         </div>
+      )}
+
+      {blockStats.total > 0 && (
+        <p className="text-sm text-muted-foreground">
+          {blockStats.withBlocks} of {blockStats.total} active deals have blocks.
+        </p>
       )}
 
       {deals.length === 0 ? (
@@ -101,7 +122,14 @@ export function DealsTable({
             <TableBody>
               {deals.map((deal) => (
                 <TableRow key={deal.id}>
-                  <TableCell className="font-medium">{fullName(deal)}</TableCell>
+                  <TableCell className="font-medium">
+                    <span className="inline-flex items-center gap-2">
+                      {fullName(deal)}
+                      {activeBlockCount(deal) > 0 && (
+                        <Badge variant="secondary">{activeBlockCount(deal)}</Badge>
+                      )}
+                    </span>
+                  </TableCell>
                   <TableCell className="text-muted-foreground">
                     {vehicle(deal)}
                   </TableCell>
@@ -135,6 +163,14 @@ export function DealsTable({
                           onClick={() => setEditing(deal)}
                         >
                           <PencilIcon />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`Blocks for ${fullName(deal)}`}
+                          onClick={() => setBlocksTargetId(deal.id)}
+                        >
+                          <TriangleAlertIcon />
                         </Button>
                         <Button
                           variant="ghost"
@@ -188,6 +224,17 @@ export function DealsTable({
       <UnwindDealDialog
         deal={unwindTarget}
         onClose={() => setUnwindTarget(null)}
+      />
+
+      <BlocksSheet
+        deal={blocksDeal}
+        blocks={blocksDeal?.blocks ?? []}
+        canMutate={canMutate}
+        userNames={userNames}
+        open={blocksDeal !== null}
+        onOpenChange={(o) => {
+          if (!o) setBlocksTargetId(null)
+        }}
       />
     </div>
   )

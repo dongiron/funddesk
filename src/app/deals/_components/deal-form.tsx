@@ -5,11 +5,13 @@ import {
   Controller,
   useForm,
   useWatch,
+  type Control,
   type FieldErrors,
   type UseFormRegister,
 } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { toast } from "sonner"
+import { XIcon } from "lucide-react"
 import {
   dealFormSchema,
   toDealInput,
@@ -61,6 +63,57 @@ function TField({
         step={step}
         placeholder={placeholder}
         {...register(name)}
+      />
+      {error && <p className="text-xs text-destructive">{error}</p>}
+    </div>
+  )
+}
+
+// Date fields are CONTROLLED (not register). base-ui's Input misbehaves with
+// RHF's uncontrolled register for type="date" (shows today, won't clear), so we
+// drive value explicitly and add a clear (×) button for optional dates.
+function DateField({
+  name,
+  label,
+  control,
+  errors,
+  clearable = true,
+}: {
+  name: keyof DealFormValues
+  label: string
+  control: Control<DealFormValues>
+  errors: FieldErrors<DealFormValues>
+  clearable?: boolean
+}) {
+  const error = errors[name]?.message as string | undefined
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={name}>{label}</Label>
+      <Controller
+        control={control}
+        name={name}
+        render={({ field }) => (
+          <div className="flex items-center gap-1">
+            <Input
+              id={name}
+              type="date"
+              value={(field.value as string) || ""}
+              onChange={(e) => field.onChange(e.target.value)}
+              onBlur={field.onBlur}
+            />
+            {clearable && field.value ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={`Clear ${label}`}
+                onClick={() => field.onChange("")}
+              >
+                <XIcon />
+              </Button>
+            ) : null}
+          </div>
+        )}
       />
       {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
@@ -177,6 +230,7 @@ export function DealForm({
   return (
     <form
       onSubmit={handleSubmit(onSubmit)}
+      autoComplete="off"
       className="flex flex-col gap-6 px-4 pb-6"
     >
       <fieldset disabled={readOnly} className="contents">
@@ -221,7 +275,23 @@ export function DealForm({
                     onValueChange={(v) => field.onChange((v as string) ?? "")}
                   >
                     <SelectTrigger id="lender_id" className="w-full">
-                      <SelectValue placeholder="Select a lender" />
+                      {/* base-ui SelectValue shows the raw value (UUID) unless
+                          given a function to map it to a label. */}
+                      <SelectValue placeholder="Select a lender">
+                        {(value) => {
+                          const id = value as string | null
+                          if (!id) return "Select a lender"
+                          return (
+                            lenders.find((l) => l.id === id)?.name ??
+                            // Fallback for a soft-deleted lender not in the
+                            // active list: use the joined name from the deal.
+                            (id === deal?.lender_id
+                              ? deal?.lender?.name
+                              : null) ??
+                            id
+                          )
+                        }}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       {lenders.map((l) => (
@@ -263,7 +333,13 @@ export function DealForm({
                   onValueChange={(v) => field.onChange(v as string)}
                 >
                   <SelectTrigger id="pipeline_state" className="w-full">
-                    <SelectValue />
+                    <SelectValue>
+                      {(value) =>
+                        PIPELINE_STATE_LABELS[value as string] ??
+                        (value as string) ??
+                        ""
+                      }
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {FORM_PIPELINE_STATES.map((s) => (
@@ -302,10 +378,10 @@ export function DealForm({
       <section className="space-y-3">
         <SectionTitle>Dates</SectionTitle>
         <div className="grid grid-cols-2 gap-3">
-          <TField name="sold_date" label="Sold date" type="date" register={register} errors={errors} />
-          <TField name="submitted_to_lender_date" label="Submitted to lender" type="date" register={register} errors={errors} />
-          <TField name="funded_date" label="Funded date" type="date" register={register} errors={errors} />
-          <TField name="physical_contract_mailed_date" label="Physical contract mailed" type="date" register={register} errors={errors} />
+          <DateField name="sold_date" label="Sold date" control={control} errors={errors} clearable={false} />
+          <DateField name="submitted_to_lender_date" label="Submitted to lender" control={control} errors={errors} />
+          <DateField name="funded_date" label="Funded date" control={control} errors={errors} />
+          <DateField name="physical_contract_mailed_date" label="Physical contract mailed" control={control} errors={errors} />
         </div>
       </section>
 
@@ -368,10 +444,10 @@ export function DealForm({
             <TField name="trade_allowance" label="Allowance" type="number" step="0.01" register={register} errors={errors} />
             <TField name="trade_payoff_quoted" label="Payoff quoted" type="number" step="0.01" register={register} errors={errors} />
             <TField name="trade_payoff_lender" label="Payoff lender" register={register} errors={errors} />
-            <TField name="trade_payoff_sent_date" label="Payoff sent" type="date" register={register} errors={errors} />
-            <TField name="trade_payoff_received_date" label="Payoff received" type="date" register={register} errors={errors} />
+            <DateField name="trade_payoff_sent_date" label="Payoff sent" control={control} errors={errors} />
+            <DateField name="trade_payoff_received_date" label="Payoff received" control={control} errors={errors} />
             <div className="col-span-2">
-              <TField name="trade_title_received_date" label="Title received" type="date" register={register} errors={errors} />
+              <DateField name="trade_title_received_date" label="Title received" control={control} errors={errors} />
             </div>
           </div>
         )}

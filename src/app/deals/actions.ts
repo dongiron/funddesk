@@ -8,6 +8,7 @@ import {
   type DealInput,
   type UnwindInput,
 } from "./deal-schema"
+import type { AddBlockValues, ResolveBlockValues } from "./block-schema"
 
 const DEAL_ROLES = ["owner", "manager", "finance_manager"]
 
@@ -189,6 +190,80 @@ export async function unwindDeal(
   }
   if (!data || data.length === 0) {
     return { ok: false, error: "You don't have permission to perform this action." }
+  }
+
+  revalidatePath("/deals")
+  return { ok: true }
+}
+
+// ── Deal blocks ──────────────────────────────────────────────────────────────
+// Blocks are immutable after creation; resolution is the only mutation.
+// opened_by / resolved_by / dealership_id are ALWAYS set from the auth context,
+// never from the client payload.
+
+export async function createBlock(
+  dealId: string,
+  values: AddBlockValues
+): Promise<ActionResult> {
+  const ctx = await requireDealActor()
+  if ("error" in ctx) return { ok: false, error: ctx.error }
+
+  const detail = values.block_detail.trim()
+
+  const { error } = await ctx.supabase.from("deal_blocks").insert({
+    dealership_id: ctx.dealershipId,
+    deal_id: dealId,
+    block_type: values.block_type,
+    block_detail: detail || null,
+    opened_by: ctx.userId,
+  })
+
+  if (error) {
+    console.error("createBlock failed:", error)
+    if (error.code === "42501") {
+      return {
+        ok: false,
+        error: "You don't have permission to add a block to this deal.",
+      }
+    }
+    return { ok: false, error: "Could not add the block. Please try again." }
+  }
+
+  revalidatePath("/deals")
+  return { ok: true }
+}
+
+export async function resolveBlock(
+  blockId: string,
+  values: ResolveBlockValues
+): Promise<ActionResult> {
+  const ctx = await requireDealActor()
+  if ("error" in ctx) return { ok: false, error: ctx.error }
+
+  const note = values.resolution_note.trim()
+
+  // Only resolve a still-open block. resolved_at + resolved_by are set together
+  // (resolved_consistency CHECK). RLS enforces tenant + role on the row.
+  const { data, error } = await ctx.supabase
+    .from("deal_blocks")
+    .update({
+      resolved_at: new Date().toISOString(),
+      resolved_by: ctx.userId,
+      resolution_note: note || null,
+    })
+    .eq("id", blockId)
+    .is("resolved_at", null)
+    .select("id")
+
+  if (error) {
+    console.error("resolveBlock failed:", error)
+    return { ok: false, error: friendly(error) }
+  }
+  if (!data || data.length === 0) {
+    return {
+      ok: false,
+      error: "Could not resolve this block. It may already be resolved.",
+    }
   }
 
   revalidatePath("/deals")
