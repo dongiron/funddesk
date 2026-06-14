@@ -1,18 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import { DealsTable } from "./_components/deals-table"
-import type { Deal, LenderOption } from "./deal-schema"
-
-const DEAL_SELECT =
-  "id, customer_first_name, customer_last_name, lender_id, pipeline_state, " +
-  "vehicle_year, vehicle_make, vehicle_model, vehicle_vin, stock_number, " +
-  "amount_financed, term_months, apr, monthly_payment, front_gross, back_gross, " +
-  "pack, reserve, sold_date, submitted_to_lender_date, funded_date, " +
-  "physical_contract_mailed_date, physical_contract_required, stips_required, " +
-  "stips_received, has_trade, trade_year, trade_make, trade_model, trade_vin, " +
-  "trade_acv, trade_allowance, trade_payoff_quoted, trade_payoff_lender, " +
-  "trade_payoff_sent_date, trade_payoff_received_date, trade_title_received_date, " +
-  "lender:lender_id(name)"
+import { DEAL_SELECT, type Deal, type LenderOption } from "./deal-schema"
 
 const DEAL_ROLES = ["owner", "manager", "finance_manager"]
 

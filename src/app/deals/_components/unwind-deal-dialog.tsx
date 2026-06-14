@@ -21,11 +21,11 @@ import {
 
 const unwindSchema = z.object({
   unwind_reason: z.string().trim().min(1, "A reason is required."),
-  unwind_cost: z
+  unwind_gross_profit: z
     .string()
     .refine(
       (v) => v.trim() !== "" && !Number.isNaN(Number(v)) && Number(v) >= 0,
-      "Enter a non-negative cost."
+      "Enter a non-negative amount."
     ),
   unwound_date: z
     .string()
@@ -51,7 +51,7 @@ function UnwindForm({ deal, onClose }: { deal: Deal; onClose: () => void }) {
     resolver: zodResolver(unwindSchema),
     defaultValues: {
       unwind_reason: "",
-      unwind_cost: "",
+      unwind_gross_profit: "",
       unwound_date: phoenixToday(),
     },
   })
@@ -59,7 +59,7 @@ function UnwindForm({ deal, onClose }: { deal: Deal; onClose: () => void }) {
   async function onSubmit(values: UnwindFormValues) {
     const result = await unwindDeal(deal.id, {
       reason: values.unwind_reason.trim(),
-      cost: Number(values.unwind_cost),
+      grossProfit: Number(values.unwind_gross_profit),
       date: values.unwound_date,
     })
     if (result.ok) {
@@ -89,17 +89,17 @@ function UnwindForm({ deal, onClose }: { deal: Deal; onClose: () => void }) {
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <Label htmlFor="unwind_cost">Cost ($)</Label>
+          <Label htmlFor="unwind_gross_profit">Gross profit lost ($)</Label>
           <Input
-            id="unwind_cost"
+            id="unwind_gross_profit"
             type="number"
             step="0.01"
             placeholder="0.00"
-            {...register("unwind_cost")}
+            {...register("unwind_gross_profit")}
           />
-          {errors.unwind_cost && (
+          {errors.unwind_gross_profit && (
             <p className="text-xs text-destructive">
-              {errors.unwind_cost.message}
+              {errors.unwind_gross_profit.message}
             </p>
           )}
         </div>

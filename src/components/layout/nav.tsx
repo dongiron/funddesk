@@ -23,6 +23,12 @@ export async function Nav() {
             Deals
           </Link>
           <Link
+            href="/deals/history"
+            className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
+            History
+          </Link>
+          <Link
             href="/lenders"
             className="text-sm text-muted-foreground transition-colors hover:text-foreground"
           >

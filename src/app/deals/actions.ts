@@ -165,8 +165,8 @@ export async function unwindDeal(
 
   const reason = input.reason.trim()
   if (!reason) return { ok: false, error: "An unwind reason is required." }
-  if (Number.isNaN(input.cost) || input.cost < 0) {
-    return { ok: false, error: "Unwind cost must be a non-negative number." }
+  if (Number.isNaN(input.grossProfit) || input.grossProfit < 0) {
+    return { ok: false, error: "Gross profit lost must be a non-negative number." }
   }
   const unwoundDate = input.date?.trim() || phoenixToday()
 
@@ -177,7 +177,7 @@ export async function unwindDeal(
       pipeline_state: "unwound",
       unwound_date: unwoundDate,
       unwind_reason: reason,
-      unwind_cost: input.cost,
+      unwind_gross_profit: input.grossProfit,
     })
     .eq("id", id)
     .is("deleted_at", null)

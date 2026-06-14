@@ -157,7 +157,7 @@ export type DealInput = {
   trade_title_received_date: string | null
 }
 
-export type UnwindInput = { reason: string; cost: number; date: string }
+export type UnwindInput = { reason: string; grossProfit: number; date: string }
 
 // ── DB row shape (inline; no generated Supabase types in this repo) ───────────
 export type Deal = {
@@ -199,6 +199,9 @@ export type Deal = {
   trade_payoff_sent_date: string | null
   trade_payoff_received_date: string | null
   trade_title_received_date: string | null
+  unwound_date: string | null
+  unwind_reason: string | null
+  unwind_gross_profit: number | null
 }
 
 // Minimal lender shape the form needs (Select + create-time pre-fill).
@@ -210,6 +213,45 @@ export type LenderOption = {
 }
 
 export type ActionResult = { ok: true } | { ok: false; error: string }
+
+// Full column list for deal queries — shared by the active page and the history
+// page so the Deal type and the select stay in sync. Active deals carry nulls
+// for the unwind columns.
+export const DEAL_SELECT =
+  "id, customer_first_name, customer_last_name, lender_id, pipeline_state, " +
+  "vehicle_year, vehicle_make, vehicle_model, vehicle_vin, stock_number, " +
+  "amount_financed, term_months, apr, monthly_payment, front_gross, back_gross, " +
+  "pack, reserve, sold_date, submitted_to_lender_date, funded_date, " +
+  "physical_contract_mailed_date, physical_contract_required, stips_required, " +
+  "stips_received, has_trade, trade_year, trade_make, trade_model, trade_vin, " +
+  "trade_acv, trade_allowance, trade_payoff_quoted, trade_payoff_lender, " +
+  "trade_payoff_sent_date, trade_payoff_received_date, trade_title_received_date, " +
+  "unwound_date, unwind_reason, unwind_gross_profit, lender:lender_id(name)"
+
+// ── History date-range filter ────────────────────────────────────────────────
+export const RANGE_OPTIONS = [
+  { value: "30d", label: "Last 30 days" },
+  { value: "90d", label: "Last 90 days" },
+  { value: "180d", label: "Last 180 days" },
+  { value: "year", label: "Last year" },
+  { value: "all", label: "All time" },
+] as const
+
+export type RangeValue = (typeof RANGE_OPTIONS)[number]["value"]
+
+export function isRangeValue(v: string | undefined): v is RangeValue {
+  return !!v && RANGE_OPTIONS.some((o) => o.value === v)
+}
+
+// Inclusive cutoff date (YYYY-MM-DD, Phoenix basis) for a range, or null = no
+// filter ("all"). Used to bound the history query on the relevant terminal date.
+export function rangeStartDate(range: RangeValue): string | null {
+  if (range === "all") return null
+  const days =
+    range === "30d" ? 30 : range === "90d" ? 90 : range === "180d" ? 180 : 365
+  const ms = Date.parse(phoenixToday()) - days * 86_400_000
+  return new Date(ms).toISOString().slice(0, 10)
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

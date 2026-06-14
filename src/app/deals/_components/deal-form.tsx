@@ -116,14 +116,21 @@ function toDefaults(deal?: Deal): DealFormValues {
   }
 }
 
+const usd = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+})
+
 export function DealForm({
   deal,
   lenders,
   onSuccess,
+  readOnly = false,
 }: {
   deal?: Deal
   lenders: LenderOption[]
   onSuccess: () => void
+  readOnly?: boolean
 }) {
   const {
     register,
@@ -153,6 +160,7 @@ export function DealForm({
   }, [lenderId])
 
   async function onSubmit(values: DealFormValues) {
+    if (readOnly) return
     const input = toDealInput(values)
     const result = deal
       ? await updateDeal(deal.id, input)
@@ -171,6 +179,7 @@ export function DealForm({
       onSubmit={handleSubmit(onSubmit)}
       className="flex flex-col gap-6 px-4 pb-6"
     >
+      <fieldset disabled={readOnly} className="contents">
       {/* 1 — Customer */}
       <section className="space-y-3">
         <SectionTitle>Customer</SectionTitle>
@@ -199,29 +208,37 @@ export function DealForm({
         <SectionTitle>Lender</SectionTitle>
         <div className="space-y-1.5">
           <Label htmlFor="lender_id">Lender</Label>
-          <Controller
-            control={control}
-            name="lender_id"
-            render={({ field }) => (
-              <Select
-                value={field.value || null}
-                onValueChange={(v) => field.onChange((v as string) ?? "")}
-              >
-                <SelectTrigger id="lender_id" className="w-full">
-                  <SelectValue placeholder="Select a lender" />
-                </SelectTrigger>
-                <SelectContent>
-                  {lenders.map((l) => (
-                    <SelectItem key={l.id} value={l.id}>
-                      {l.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          />
-          {errors.lender_id && (
-            <p className="text-xs text-destructive">{errors.lender_id.message}</p>
+          {readOnly ? (
+            <p className="text-sm">{deal?.lender?.name ?? "—"}</p>
+          ) : (
+            <>
+              <Controller
+                control={control}
+                name="lender_id"
+                render={({ field }) => (
+                  <Select
+                    value={field.value || null}
+                    onValueChange={(v) => field.onChange((v as string) ?? "")}
+                  >
+                    <SelectTrigger id="lender_id" className="w-full">
+                      <SelectValue placeholder="Select a lender" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {lenders.map((l) => (
+                        <SelectItem key={l.id} value={l.id}>
+                          {l.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+              {errors.lender_id && (
+                <p className="text-xs text-destructive">
+                  {errors.lender_id.message}
+                </p>
+              )}
+            </>
           )}
         </div>
       </section>
@@ -229,30 +246,41 @@ export function DealForm({
       {/* 4 — Pipeline state */}
       <section className="space-y-3">
         <SectionTitle>Pipeline state</SectionTitle>
-        <Controller
-          control={control}
-          name="pipeline_state"
-          render={({ field }) => (
-            <Select
-              value={field.value}
-              onValueChange={(v) => field.onChange(v as string)}
-            >
-              <SelectTrigger id="pipeline_state" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {FORM_PIPELINE_STATES.map((s) => (
-                  <SelectItem key={s} value={s}>
-                    {PIPELINE_STATE_LABELS[s]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-        />
-        <p className="text-xs text-muted-foreground">
-          To unwind a deal, use the Unwind action on the list, not this dropdown.
-        </p>
+        {readOnly ? (
+          <p className="text-sm">
+            {PIPELINE_STATE_LABELS[deal?.pipeline_state ?? ""] ??
+              deal?.pipeline_state ??
+              "—"}
+          </p>
+        ) : (
+          <>
+            <Controller
+              control={control}
+              name="pipeline_state"
+              render={({ field }) => (
+                <Select
+                  value={field.value}
+                  onValueChange={(v) => field.onChange(v as string)}
+                >
+                  <SelectTrigger id="pipeline_state" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {FORM_PIPELINE_STATES.map((s) => (
+                      <SelectItem key={s} value={s}>
+                        {PIPELINE_STATE_LABELS[s]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
+            <p className="text-xs text-muted-foreground">
+              To unwind a deal, use the Unwind action on the list, not this
+              dropdown.
+            </p>
+          </>
+        )}
       </section>
 
       {/* 5 — Financial */}
@@ -349,9 +377,39 @@ export function DealForm({
         )}
       </section>
 
-      <Button type="submit" disabled={isSubmitting} className="mt-2">
-        {isSubmitting ? "Saving…" : deal ? "Save changes" : "Add deal"}
-      </Button>
+      </fieldset>
+
+      {readOnly && deal?.pipeline_state === "unwound" && (
+        <section className="space-y-3">
+          <SectionTitle>Unwind details</SectionTitle>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label>Unwound date</Label>
+              <p className="text-sm">{deal.unwound_date ?? "—"}</p>
+            </div>
+            <div className="space-y-1">
+              <Label>Gross profit lost</Label>
+              <p className="text-sm">
+                {deal.unwind_gross_profit == null
+                  ? "—"
+                  : usd.format(Number(deal.unwind_gross_profit))}
+              </p>
+            </div>
+            <div className="col-span-2 space-y-1">
+              <Label>Reason</Label>
+              <p className="text-sm whitespace-pre-wrap">
+                {deal.unwind_reason ?? "—"}
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {!readOnly && (
+        <Button type="submit" disabled={isSubmitting} className="mt-2">
+          {isSubmitting ? "Saving…" : deal ? "Save changes" : "Add deal"}
+        </Button>
+      )}
     </form>
   )
 }
