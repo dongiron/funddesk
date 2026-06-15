@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import {
   Controller,
   useForm,
@@ -35,6 +35,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { StipsChecklist } from "./stips-checklist"
+import { decodeVin, isValidVinFormat } from "../vin-decoder"
 
 // Module-level field helper (defined outside render so inputs don't remount).
 function TField({
@@ -202,6 +203,11 @@ export function DealForm({
   const hasTrade = useWatch({ control, name: "has_trade" })
   const stipsRequired = useWatch({ control, name: "stips_required" })
   const stipsReceived = useWatch({ control, name: "stips_received" })
+  const vehicleVin = useWatch({ control, name: "vehicle_vin" })
+
+  // VIN auto-decode. initialVin guards against firing on edit-mode load.
+  const initialVin = deal?.vehicle_vin ?? ""
+  const [vinDecoding, setVinDecoding] = useState(false)
 
   // On create only: when a lender is picked, seed physical-contract + required
   // stips from that lender. Never auto-overwrite on edit.
@@ -214,6 +220,52 @@ export function DealForm({
     setValue("stips_required", l.common_required_stips)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lenderId])
+
+  // Auto-decode the VIN via NHTSA once it's 17 valid chars and actually changed
+  // (not on edit-mode initial load, not in read-only).
+  useEffect(() => {
+    const vin = vehicleVin ?? ""
+    if (readOnly) return
+    if (!isValidVinFormat(vin)) return
+    if (vin === initialVin) return
+
+    const controller = new AbortController()
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setVinDecoding(true)
+    decodeVin(vin, controller.signal)
+      .then((result) => {
+        if (controller.signal.aborted) return
+        if (result) {
+          setValue(
+            "vehicle_year",
+            result.year != null ? String(result.year) : "",
+            { shouldDirty: true }
+          )
+          setValue("vehicle_make", result.make, { shouldDirty: true })
+          setValue("vehicle_model", result.model, { shouldDirty: true })
+          const summary = [result.year, result.make, result.model]
+            .filter(Boolean)
+            .join(" ")
+          toast.success(`Decoded VIN: ${summary}`)
+        } else {
+          toast.error(
+            "Couldn't decode that VIN. Check that it's correct, or fill in vehicle info manually."
+          )
+        }
+      })
+      .catch((err) => {
+        if (controller.signal.aborted || err?.name === "AbortError") return
+        toast.error(
+          "VIN decode service unavailable. Fill in vehicle info manually."
+        )
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setVinDecoding(false)
+      })
+
+    return () => controller.abort()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vehicleVin])
 
   async function onSubmit(values: DealFormValues) {
     if (readOnly) return
@@ -256,6 +308,9 @@ export function DealForm({
           <TField name="stock_number" label="Stock #" register={register} errors={errors} />
           <div className="col-span-2">
             <TField name="vehicle_vin" label="VIN" register={register} errors={errors} />
+            {vinDecoding && (
+              <p className="mt-1 text-xs text-muted-foreground">Decoding…</p>
+            )}
           </div>
         </div>
       </section>
