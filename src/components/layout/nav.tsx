@@ -17,6 +17,12 @@ export async function Nav() {
         </Link>
         <div className="flex items-center gap-4">
           <Link
+            href="/"
+            className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
+            Dashboard
+          </Link>
+          <Link
             href="/deals"
             className="text-sm text-muted-foreground transition-colors hover:text-foreground"
           >
