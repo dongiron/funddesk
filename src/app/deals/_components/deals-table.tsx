@@ -1,7 +1,13 @@
 "use client"
 
 import { useState } from "react"
-import { PencilIcon, PlusIcon, TriangleAlertIcon, Undo2Icon } from "lucide-react"
+import {
+  ListChecksIcon,
+  PencilIcon,
+  PlusIcon,
+  TriangleAlertIcon,
+  Undo2Icon,
+} from "lucide-react"
 import {
   daysSinceSold,
   PIPELINE_STATE_LABELS,
@@ -29,6 +35,7 @@ import {
 import { DealForm } from "./deal-form"
 import { UnwindDealDialog } from "./unwind-deal-dialog"
 import { BlocksSheet } from "./blocks-sheet"
+import { StipsSheet } from "./stips-sheet"
 
 const currency = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -72,12 +79,16 @@ export function DealsTable({
   const [editing, setEditing] = useState<Deal | "create" | null>(null)
   const [unwindTarget, setUnwindTarget] = useState<Deal | null>(null)
   const [blocksTargetId, setBlocksTargetId] = useState<string | null>(null)
+  const [stipsTargetId, setStipsTargetId] = useState<string | null>(null)
 
   const sheetOpen = editing !== null
   const editingDeal = editing === "create" ? undefined : (editing ?? undefined)
-  // Derive from the live deals so the sheet reflects fresh blocks after revalidate.
+  // Derive from the live deals so the sheets reflect fresh data after revalidate.
   const blocksDeal = blocksTargetId
     ? (deals.find((d) => d.id === blocksTargetId) ?? null)
+    : null
+  const stipsDeal = stipsTargetId
+    ? (deals.find((d) => d.id === stipsTargetId) ?? null)
     : null
 
   return (
@@ -167,6 +178,14 @@ export function DealsTable({
                         <Button
                           variant="ghost"
                           size="icon-sm"
+                          aria-label={`Stips for ${fullName(deal)}`}
+                          onClick={() => setStipsTargetId(deal.id)}
+                        >
+                          <ListChecksIcon />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
                           aria-label={`Blocks for ${fullName(deal)}`}
                           onClick={() => setBlocksTargetId(deal.id)}
                         >
@@ -234,6 +253,15 @@ export function DealsTable({
         open={blocksDeal !== null}
         onOpenChange={(o) => {
           if (!o) setBlocksTargetId(null)
+        }}
+      />
+
+      <StipsSheet
+        deal={stipsDeal}
+        canMutate={canMutate}
+        open={stipsDeal !== null}
+        onOpenChange={(o) => {
+          if (!o) setStipsTargetId(null)
         }}
       />
     </div>

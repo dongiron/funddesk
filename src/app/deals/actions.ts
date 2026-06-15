@@ -269,3 +269,40 @@ export async function resolveBlock(
   revalidatePath("/deals")
   return { ok: true }
 }
+
+// ── Deal stips ───────────────────────────────────────────────────────────────
+// Persists the stip checklist (JSONB arrays). DB shape unchanged.
+export async function updateDealStips(
+  dealId: string,
+  input: { stips_required: string[]; stips_received: string[] }
+): Promise<ActionResult> {
+  const ctx = await requireDealActor()
+  if ("error" in ctx) return { ok: false, error: ctx.error }
+
+  const clean = (arr: string[]) =>
+    (arr ?? []).map((s) => s.trim()).filter((s) => s.length > 0)
+  const stips_required = clean(input.stips_required)
+  const stips_received = clean(input.stips_received)
+
+  const { data, error } = await ctx.supabase
+    .from("deals")
+    .update({ stips_required, stips_received })
+    .eq("id", dealId)
+    .is("deleted_at", null)
+    .select("id")
+
+  if (error) {
+    console.error("updateDealStips failed:", error)
+    return { ok: false, error: friendly(error) }
+  }
+  if (!data || data.length === 0) {
+    return {
+      ok: false,
+      error: "You don't have permission to update this deal.",
+    }
+  }
+
+  revalidatePath("/deals")
+  revalidatePath("/") // refresh triage dashboard chips + missing-stips count
+  return { ok: true }
+}

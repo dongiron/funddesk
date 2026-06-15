@@ -34,6 +34,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { StipsChecklist } from "./stips-checklist"
 
 // Module-level field helper (defined outside render so inputs don't remount).
 function TField({
@@ -152,8 +153,8 @@ function toDefaults(deal?: Deal): DealFormValues {
     funded_date: s(deal?.funded_date),
     physical_contract_mailed_date: s(deal?.physical_contract_mailed_date),
     physical_contract_required: deal?.physical_contract_required ?? false,
-    stips_required: deal?.stips_required?.join(", ") ?? "",
-    stips_received: deal?.stips_received?.join(", ") ?? "",
+    stips_required: deal?.stips_required ?? [],
+    stips_received: deal?.stips_received ?? [],
     has_trade: deal?.has_trade ?? false,
     trade_year: n(deal?.trade_year),
     trade_make: s(deal?.trade_make),
@@ -199,6 +200,8 @@ export function DealForm({
   // useWatch (not watch()) keeps this component memoization-safe under React Compiler.
   const lenderId = useWatch({ control, name: "lender_id" })
   const hasTrade = useWatch({ control, name: "has_trade" })
+  const stipsRequired = useWatch({ control, name: "stips_required" })
+  const stipsReceived = useWatch({ control, name: "stips_received" })
 
   // On create only: when a lender is picked, seed physical-contract + required
   // stips from that lender. Never auto-overwrite on edit.
@@ -208,7 +211,7 @@ export function DealForm({
     const l = lenders.find((x) => x.id === lenderId)
     if (!l) return
     setValue("physical_contract_required", l.requires_physical_contract)
-    setValue("stips_required", l.common_required_stips.join(", "))
+    setValue("stips_required", l.common_required_stips)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lenderId])
 
@@ -409,9 +412,15 @@ export function DealForm({
       {/* 8 — Stips */}
       <section className="space-y-3">
         <SectionTitle>Stips</SectionTitle>
-        <TField name="stips_required" label="Required stips" placeholder="paystub, proof of residence, insurance" register={register} errors={errors} />
-        <TField name="stips_received" label="Received stips" placeholder="paystub" register={register} errors={errors} />
-        <p className="text-xs text-muted-foreground">Comma-separated.</p>
+        <StipsChecklist
+          stips_required={stipsRequired ?? []}
+          stips_received={stipsReceived ?? []}
+          onChange={(next) => {
+            setValue("stips_required", next.stips_required)
+            setValue("stips_received", next.stips_received)
+          }}
+          disabled={readOnly}
+        />
       </section>
 
       {/* 9 — Trade */}

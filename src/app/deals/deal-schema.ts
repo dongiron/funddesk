@@ -98,8 +98,8 @@ export const dealFormSchema = z.object({
   // physical contract
   physical_contract_required: z.boolean(),
   // stips (comma input)
-  stips_required: z.string(),
-  stips_received: z.string(),
+  stips_required: z.array(z.string()),
+  stips_received: z.array(z.string()),
   // trade
   has_trade: z.boolean(),
   trade_year: optionalInt,
@@ -276,11 +276,17 @@ export function daysSinceSold(soldDate: string): number {
   return Math.round((today - sold) / 86_400_000)
 }
 
-export function toStipArray(value: string): string[] {
-  return value
-    .split(",")
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0)
+// Trim each entry and drop empties (stips are arrays now, not CSV text).
+export function cleanStips(values: string[]): string[] {
+  return values.map((s) => s.trim()).filter((s) => s.length > 0)
+}
+
+export function normalizeStip(s: string): string {
+  return s.trim().toLowerCase()
+}
+
+export function stipsMatch(a: string, b: string): boolean {
+  return normalizeStip(a) === normalizeStip(b)
 }
 
 function emptyToNull(value: string): string | null {
@@ -318,8 +324,8 @@ export function toDealInput(v: DealFormValues): DealInput {
     funded_date: emptyToNull(v.funded_date),
     physical_contract_mailed_date: emptyToNull(v.physical_contract_mailed_date),
     physical_contract_required: v.physical_contract_required,
-    stips_required: toStipArray(v.stips_required),
-    stips_received: toStipArray(v.stips_received),
+    stips_required: cleanStips(v.stips_required),
+    stips_received: cleanStips(v.stips_received),
     has_trade: hasTrade,
     // Trade columns are null when has_trade is false.
     trade_year: hasTrade ? numOrNull(v.trade_year) : null,
