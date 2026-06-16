@@ -1,16 +1,27 @@
 import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
-import { daysSinceSold } from "./deals/deal-schema"
-import { BLOCK_SELECT, blockCategory, type DealBlock } from "./deals/block-schema"
+import {
+  DEAL_SELECT,
+  daysSinceSold,
+  phoenixToday,
+  type Deal,
+} from "./deals/deal-schema"
+import { BLOCK_SELECT, type DealBlock } from "./deals/block-schema"
 import type { BlocksSheetDeal } from "./deals/_components/blocks-sheet"
-import { TriageDashboard, type TriageRow } from "./_components/triage-dashboard"
+import {
+  TriageDashboard,
+  type ActiveRow,
+  type ActiveSection,
+  type FundedRow,
+  type FundedSection,
+} from "./_components/triage-dashboard"
 
-const DASHBOARD_SELECT =
+const ACTIVE_SELECT =
   "id, customer_first_name, customer_last_name, vehicle_year, vehicle_make, " +
-  "vehicle_model, lender_id, pipeline_state, sold_date, submitted_to_lender_date, " +
+  "vehicle_model, lender_id, pipeline_state, sold_date, amount_financed, " +
   "stips_required, stips_received, lender:lender_id(name, overdue_threshold_days)"
 
-type DashRow = {
+type ActiveDealRow = {
   id: string
   customer_first_name: string | null
   customer_last_name: string | null
@@ -20,21 +31,13 @@ type DashRow = {
   lender_id: string | null
   pipeline_state: string
   sold_date: string
-  submitted_to_lender_date: string | null
+  amount_financed: number | null
   stips_required: string[]
   stips_received: string[]
   lender: { name: string; overdue_threshold_days: number | null } | null
 }
 
-// Highest-priority tier the deal qualifies for (1 = most urgent).
-function tierOf(r: TriageRow): number {
-  if (r.activeBlocks.some((b) => blockCategory(b.block_type) === "I fix")) return 1
-  if (r.activeBlocks.some((b) => blockCategory(b.block_type) === "Chase")) return 2
-  if (r.isOverdue) return 3
-  if (r.missingStipsCount > 0) return 4
-  if (r.activeBlocks.some((b) => blockCategory(b.block_type) === "Lender")) return 5
-  return 6
-}
+const money = (v: number | null) => Number(v ?? 0)
 
 export default async function Home() {
   const supabase = await createClient()
@@ -52,19 +55,32 @@ export default async function Home() {
     .single()
   const currentUserRole = profile?.role ?? ""
 
-  // Active deals + the lender fields we need for the overdue signal.
-  const { data: dealsData } = await supabase
+  // Active deals (contracts in transit) + the lender fields the overdue rule needs.
+  const { data: activeData } = await supabase
     .from("deals")
-    .select(DASHBOARD_SELECT)
+    .select(ACTIVE_SELECT)
     .not("pipeline_state", "in", "(funded,unwound)")
     .is("deleted_at", null)
-    .order("sold_date", { ascending: false })
-    .returns<DashRow[]>()
-  const activeDeals = dealsData ?? []
+    .returns<ActiveDealRow[]>()
+  const activeDeals = activeData ?? []
   const dealIds = activeDeals.map((d) => d.id)
 
-  // All blocks (active + resolved) for the visible deals — active subset drives
-  // signals, the full set feeds the reused Blocks Sheet.
+  // Recently funded (last 30 days, Phoenix). Full columns for the read-only form.
+  const fundedCutoff = new Date(Date.parse(phoenixToday()) - 30 * 86_400_000)
+    .toISOString()
+    .slice(0, 10)
+  const { data: fundedData } = await supabase
+    .from("deals")
+    .select(DEAL_SELECT)
+    .eq("pipeline_state", "funded")
+    .gte("funded_date", fundedCutoff)
+    .is("deleted_at", null)
+    .order("funded_date", { ascending: false })
+    .returns<Deal[]>()
+  const fundedDeals = fundedData ?? []
+
+  // All blocks for the active deals — active subset drives sections, full set
+  // feeds the reused Blocks Sheet.
   const blocksByDeal: Record<string, DealBlock[]> = {}
   if (dealIds.length > 0) {
     const { data: blocks } = await supabase
@@ -89,39 +105,32 @@ export default async function Home() {
     userNames[u.id] = u.full_name || u.email
   }
 
-  // Compute signals and keep only deals that need attention.
-  const rows: TriageRow[] = []
-  let overdueCount = 0
-  let missingStipsDeals = 0
+  // Classify each active deal into exactly one section (top match wins).
+  const overdueRows: ActiveRow[] = []
+  const actionRows: ActiveRow[] = []
+  const cleanRows: ActiveRow[] = []
+  let inTransitTotal = 0
+  let overdueTotal = 0
 
   for (const d of activeDeals) {
     const allBlocks = blocksByDeal[d.id] ?? []
     const activeBlocks = allBlocks.filter((b) => b.resolved_at === null)
 
-    // Overdue (skip lenders with a null threshold per the locked convention).
-    const threshold = d.lender?.overdue_threshold_days ?? null
-    let isOverdue = false
-    let daysOverdue = 0
-    if (threshold != null && d.submitted_to_lender_date) {
-      const sinceSubmit = daysSinceSold(d.submitted_to_lender_date)
-      if (sinceSubmit > threshold) {
-        isOverdue = true
-        daysOverdue = sinceSubmit - threshold
-      }
-    }
-
-    // Missing stips — don't double-count when an active chase block exists.
     const hasChaseStip = activeBlocks.some(
       (b) => b.block_type === "chase_customer_stip"
     )
     const stipDiff = d.stips_required.length - d.stips_received.length
     const missingStipsCount = stipDiff > 0 && !hasChaseStip ? stipDiff : 0
+    const actionNeeded = activeBlocks.length > 0 || missingStipsCount > 0
 
-    if (activeBlocks.length === 0 && !isOverdue && missingStipsCount === 0) {
-      continue
-    }
-    if (isOverdue) overdueCount++
-    if (missingStipsCount > 0) missingStipsDeals++
+    const threshold = d.lender?.overdue_threshold_days ?? null
+    const daysSold = daysSinceSold(d.sold_date)
+    const isOverdue = threshold != null && daysSold > threshold
+    const daysOverdue = isOverdue ? daysSold - threshold : 0
+
+    const amount = money(d.amount_financed)
+    inTransitTotal += amount
+    if (isOverdue) overdueTotal += amount // any active overdue deal, any section
 
     const deal: BlocksSheetDeal = {
       id: d.id,
@@ -133,38 +142,60 @@ export default async function Home() {
       pipeline_state: d.pipeline_state,
       lender: d.lender ? { name: d.lender.name } : null,
     }
-    rows.push({
+    const row: ActiveRow = {
       deal,
       blocks: allBlocks,
-      daysSinceSold: daysSinceSold(d.sold_date),
+      amountFinanced: d.amount_financed,
+      daysSinceSold: daysSold,
       activeBlocks,
       isOverdue,
       daysOverdue,
       missingStipsCount,
-    })
+    }
+
+    if (actionNeeded) actionRows.push(row)
+    else if (isOverdue) overdueRows.push(row)
+    else cleanRows.push(row)
   }
 
-  // Tiered urgency, then oldest-first within a tier.
-  rows.sort((a, b) => {
-    const ta = tierOf(a)
-    const tb = tierOf(b)
-    if (ta !== tb) return ta - tb
-    return b.daysSinceSold - a.daysSinceSold
+  // Longest-waiting first within active sections (sold_date asc).
+  const byOldest = (a: ActiveRow, b: ActiveRow) =>
+    b.daysSinceSold - a.daysSinceSold
+  overdueRows.sort(byOldest)
+  actionRows.sort(byOldest)
+  cleanRows.sort(byOldest)
+
+  const toSection = (deals: ActiveRow[]): ActiveSection => ({
+    deals,
+    count: deals.length,
+    total: deals.reduce((s, r) => s + money(r.amountFinanced), 0),
   })
+
+  const fundedRows: FundedRow[] = fundedDeals.map((d) => ({
+    deal: d,
+    daysAgo: d.funded_date ? daysSinceSold(d.funded_date) : 0,
+    amountFinanced: d.amount_financed,
+  }))
+  const funded: FundedSection = {
+    deals: fundedRows,
+    count: fundedRows.length,
+    total: fundedRows.reduce((s, r) => s + money(r.amountFinanced), 0),
+  }
 
   return (
     <div className="min-h-screen bg-background px-6 py-10">
       <div className="mx-auto max-w-5xl space-y-6">
-        <header className="space-y-1">
+        <header>
           <h1 className="text-2xl font-semibold">Triage</h1>
-          <p className="text-sm text-muted-foreground">
-            {activeDeals.length} active deals · {rows.length} need attention ·{" "}
-            {overdueCount} overdue · {missingStipsDeals} with missing stips
-          </p>
         </header>
 
         <TriageDashboard
-          rows={rows}
+          overdue={toSection(overdueRows)}
+          action={toSection(actionRows)}
+          clean={toSection(cleanRows)}
+          funded={funded}
+          inTransitTotal={inTransitTotal}
+          overdueTotal={overdueTotal}
           currentUserRole={currentUserRole}
           userNames={userNames}
         />
