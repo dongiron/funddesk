@@ -14,6 +14,8 @@ import {
   type ActiveSection,
   type FundedRow,
   type FundedSection,
+  type PipelineDistribution,
+  type TriageMetrics,
 } from "./_components/triage-dashboard"
 
 const ACTIVE_SELECT =
@@ -39,6 +41,20 @@ type ActiveDealRow = {
 
 const money = (v: number | null) => Number(v ?? 0)
 
+const AWAITING_STATES = ["submitted", "awaiting_physical_delivery", "waiting_to_fund"]
+
+function phoenixSubtitle(): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Phoenix",
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+  }).formatToParts(new Date())
+  const get = (t: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === t)?.value ?? ""
+  return `${get("weekday")} · ${get("month")} ${get("day")} · phoenix`.toLowerCase()
+}
+
 export default async function Home() {
   const supabase = await createClient()
 
@@ -55,7 +71,6 @@ export default async function Home() {
     .single()
   const currentUserRole = profile?.role ?? ""
 
-  // Active deals (contracts in transit) + the lender fields the overdue rule needs.
   const { data: activeData } = await supabase
     .from("deals")
     .select(ACTIVE_SELECT)
@@ -65,7 +80,6 @@ export default async function Home() {
   const activeDeals = activeData ?? []
   const dealIds = activeDeals.map((d) => d.id)
 
-  // Recently funded (last 30 days, Phoenix). Full columns for the read-only form.
   const fundedCutoff = new Date(Date.parse(phoenixToday()) - 30 * 86_400_000)
     .toISOString()
     .slice(0, 10)
@@ -79,8 +93,6 @@ export default async function Home() {
     .returns<Deal[]>()
   const fundedDeals = fundedData ?? []
 
-  // All blocks for the active deals — active subset drives sections, full set
-  // feeds the reused Blocks Sheet.
   const blocksByDeal: Record<string, DealBlock[]> = {}
   if (dealIds.length > 0) {
     const { data: blocks } = await supabase
@@ -94,7 +106,6 @@ export default async function Home() {
     }
   }
 
-  // Names for opened_by / resolved_by in the sheet.
   const userNames: Record<string, string> = {}
   const { data: dealershipUsers } = await supabase
     .from("users")
@@ -105,17 +116,54 @@ export default async function Home() {
     userNames[u.id] = u.full_name || u.email
   }
 
-  // Classify each active deal into exactly one section (top match wins).
+  // ── Sections (existing assignment logic, top match wins) ───────────────────
   const overdueRows: ActiveRow[] = []
   const actionRows: ActiveRow[] = []
   const cleanRows: ActiveRow[] = []
+
+  // ── Metrics (independent of section assignment; intentional overlap) ───────
   let inTransitTotal = 0
+  let inTransitCount = 0
   let overdueTotal = 0
+  let overdueCount = 0
+  let overdueMinDays = Infinity
+  let overdueMaxDays = 0
+  let awaitingTotal = 0
+  let awaitingCount = 0
+
+  // ── Pipeline distribution (active states only) ─────────────────────────────
+  const dist = { gathering: 0, ready: 0, submitted: 0, waiting: 0, inTransit: 0 }
+  let totalAmount = 0
 
   for (const d of activeDeals) {
+    const amount = money(d.amount_financed)
+    totalAmount += amount
+
+    // distribution buckets
+    if (
+      ["signed", "waiting_for_scan", "gathering_paperwork", "gathering_stips"].includes(
+        d.pipeline_state
+      )
+    )
+      dist.gathering++
+    else if (d.pipeline_state === "ready_to_send") dist.ready++
+    else if (["submitted", "awaiting_physical_delivery"].includes(d.pipeline_state))
+      dist.submitted++
+    else if (d.pipeline_state === "waiting_to_fund") dist.waiting++
+    else if (d.pipeline_state === "funds_in_transit") dist.inTransit++
+
+    // metrics
+    if (d.pipeline_state === "funds_in_transit") {
+      inTransitTotal += amount
+      inTransitCount++
+    }
+    if (AWAITING_STATES.includes(d.pipeline_state)) {
+      awaitingTotal += amount
+      awaitingCount++
+    }
+
     const allBlocks = blocksByDeal[d.id] ?? []
     const activeBlocks = allBlocks.filter((b) => b.resolved_at === null)
-
     const hasChaseStip = activeBlocks.some(
       (b) => b.block_type === "chase_customer_stip"
     )
@@ -128,9 +176,12 @@ export default async function Home() {
     const isOverdue = threshold != null && daysSold > threshold
     const daysOverdue = isOverdue ? daysSold - threshold : 0
 
-    const amount = money(d.amount_financed)
-    inTransitTotal += amount
-    if (isOverdue) overdueTotal += amount // any active overdue deal, any section
+    if (isOverdue) {
+      overdueTotal += amount
+      overdueCount++
+      overdueMinDays = Math.min(overdueMinDays, daysOverdue)
+      overdueMaxDays = Math.max(overdueMaxDays, daysOverdue)
+    }
 
     const deal: BlocksSheetDeal = {
       id: d.id,
@@ -147,10 +198,17 @@ export default async function Home() {
       blocks: allBlocks,
       amountFinanced: d.amount_financed,
       daysSinceSold: daysSold,
+      thresholdDays: threshold,
       activeBlocks,
       isOverdue,
       daysOverdue,
       missingStipsCount,
+      missingStips:
+        missingStipsCount > 0
+          ? d.stips_required.filter(
+              (s) => !d.stips_received.some((r) => r.toLowerCase() === s.toLowerCase())
+            )
+          : [],
     }
 
     if (actionNeeded) actionRows.push(row)
@@ -158,9 +216,7 @@ export default async function Home() {
     else cleanRows.push(row)
   }
 
-  // Longest-waiting first within active sections (sold_date asc).
-  const byOldest = (a: ActiveRow, b: ActiveRow) =>
-    b.daysSinceSold - a.daysSinceSold
+  const byOldest = (a: ActiveRow, b: ActiveRow) => b.daysSinceSold - a.daysSinceSold
   overdueRows.sort(byOldest)
   actionRows.sort(byOldest)
   cleanRows.sort(byOldest)
@@ -182,20 +238,33 @@ export default async function Home() {
     total: fundedRows.reduce((s, r) => s + money(r.amountFinanced), 0),
   }
 
-  return (
-    <div className="min-h-screen bg-background px-6 py-10">
-      <div className="mx-auto max-w-5xl space-y-6">
-        <header>
-          <h1 className="text-2xl font-semibold">Triage</h1>
-        </header>
+  const metrics: TriageMetrics = {
+    inTransit: { total: inTransitTotal, count: inTransitCount },
+    overdue: {
+      total: overdueTotal,
+      count: overdueCount,
+      minDays: overdueCount > 0 ? overdueMinDays : 0,
+      maxDays: overdueMaxDays,
+    },
+    awaiting: { total: awaitingTotal, count: awaitingCount },
+  }
+  const distribution: PipelineDistribution = {
+    ...dist,
+    totalActive: activeDeals.length,
+    totalAmount,
+  }
 
+  return (
+    <div className="flex-1 px-6 py-8">
+      <div className="mx-auto max-w-5xl">
         <TriageDashboard
+          subtitle={phoenixSubtitle()}
+          metrics={metrics}
+          distribution={distribution}
           overdue={toSection(overdueRows)}
           action={toSection(actionRows)}
           clean={toSection(cleanRows)}
           funded={funded}
-          inTransitTotal={inTransitTotal}
-          overdueTotal={overdueTotal}
           currentUserRole={currentUserRole}
           userNames={userNames}
         />

@@ -8,12 +8,15 @@ import {
   type RangeValue,
 } from "../deal-schema"
 import { DateRangeFilter } from "./_components/date-range-filter"
-import {
-  HistoryTabs,
-  type FundedSummary,
-  type HistoryTab,
-  type UnwoundSummary,
-} from "./_components/history-tabs"
+import { HistoryTabs, type HistoryTab } from "./_components/history-tabs"
+
+const usd = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  maximumFractionDigits: 0,
+})
+const sum = (deals: Deal[]) =>
+  deals.reduce((s, d) => s + Number(d.amount_financed ?? 0), 0)
 
 export default async function DealHistoryPage({
   searchParams,
@@ -39,11 +42,9 @@ export default async function DealHistoryPage({
   const range: RangeValue = isRangeValue(rangeParam) ? rangeParam : "all"
   const cutoff = rangeStartDate(range)
 
-  // Unwound is owner-only; the value-add (gross profit lost) lives there.
   const visibleTabs: HistoryTab[] = isOwner ? ["unwound", "funded"] : ["funded"]
   const defaultTab: HistoryTab = isOwner ? "unwound" : "funded"
 
-  // Funded — all roles (RLS scopes finance managers to their own deals).
   let fundedQuery = supabase
     .from("deals")
     .select(DEAL_SELECT)
@@ -54,7 +55,6 @@ export default async function DealHistoryPage({
   const { data: fundedData } = await fundedQuery.returns<Deal[]>()
   const fundedDeals = fundedData ?? []
 
-  // Unwound — fetched only for owners (not sent to anyone else).
   let unwoundDeals: Deal[] = []
   if (isOwner) {
     let unwoundQuery = supabase
@@ -68,49 +68,31 @@ export default async function DealHistoryPage({
     unwoundDeals = data ?? []
   }
 
-  const fundedTotal = fundedDeals.reduce(
-    (sum, d) => sum + Number(d.amount_financed ?? 0),
-    0
-  )
-  const fundedSummary: FundedSummary = {
-    total: fundedTotal,
-    count: fundedDeals.length,
-    avg: fundedDeals.length ? fundedTotal / fundedDeals.length : 0,
-  }
-
-  const unwoundTotal = unwoundDeals.reduce(
-    (sum, d) => sum + Number(d.unwind_gross_profit ?? 0),
-    0
-  )
-  const unwoundSummary: UnwoundSummary = {
-    total: unwoundTotal,
-    count: unwoundDeals.length,
-    recentReasons: unwoundDeals.slice(0, 5).map((d) => ({
-      date: d.unwound_date,
-      reason: d.unwind_reason,
-      amount: d.unwind_gross_profit,
-    })),
-  }
-
   return (
-    <div className="min-h-screen bg-background px-6 py-10">
-      <div className="mx-auto max-w-7xl space-y-6">
-        <header className="space-y-1">
-          <h1 className="text-2xl font-semibold">Deal history</h1>
-          <p className="text-muted-foreground">
-            Funded and unwound deals. Click a row to view the full deal.
-          </p>
+    <div className="flex-1 px-6 py-8">
+      <div className="mx-auto max-w-7xl">
+        <header className="mb-6 flex items-end justify-between">
+          <div>
+            <h1 className="text-2xl font-medium tracking-tight">History</h1>
+            <p className="mt-1 text-xs text-fg-secondary">
+              <span className="font-mono">{fundedDeals.length}</span> funded ·{" "}
+              <span className="font-mono">{usd.format(sum(fundedDeals))}</span>
+              {isOwner && (
+                <>
+                  , + <span className="font-mono">{unwoundDeals.length}</span> unwound ·{" "}
+                  <span className="font-mono">{usd.format(sum(unwoundDeals))}</span>
+                </>
+              )}
+            </p>
+          </div>
+          <DateRangeFilter currentRange={range} />
         </header>
-
-        <DateRangeFilter currentRange={range} />
 
         <HistoryTabs
           visibleTabs={visibleTabs}
           defaultTab={defaultTab}
           fundedDeals={fundedDeals}
           unwoundDeals={unwoundDeals}
-          fundedSummary={fundedSummary}
-          unwoundSummary={unwoundSummary}
         />
       </div>
     </div>

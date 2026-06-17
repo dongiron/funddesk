@@ -1,18 +1,18 @@
 "use client"
 
-import { useState } from "react"
-import { PencilIcon, PlusIcon, Trash2Icon } from "lucide-react"
+import { useMemo, useState } from "react"
+import { CheckIcon, MoreHorizontalIcon } from "lucide-react"
 import type { Lender } from "../lender-schema"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   Sheet,
   SheetContent,
@@ -23,121 +23,189 @@ import {
 import { LenderForm } from "./lender-form"
 import { DeleteLenderDialog } from "./delete-lender-dialog"
 
-// Booleans shown as badges (true-only) in the Flags column.
-const FLAGS: { key: keyof Lender; label: string }[] = [
-  { key: "clears_stips_upfront", label: "Clears stips upfront" },
-  { key: "does_welcome_calls", label: "Welcome calls" },
-  { key: "does_employment_verification", label: "Employment verify" },
-  { key: "can_increase_lender_fee", label: "Can raise fee" },
-  { key: "accepts_esign", label: "e-sign" },
-  { key: "requires_physical_contract", label: "Wet-ink" },
-]
+const CHIP =
+  "rounded-md border border-line bg-surface px-3 py-2 font-mono text-xs tracking-wide text-fg-secondary outline-none transition-colors hover:text-fg-primary"
+const GRID = "grid grid-cols-[1fr_140px_120px_72px_36px] items-center gap-3"
 
-function NumberCell({ value }: { value: number | null }) {
-  if (value == null) {
-    return <span className="text-muted-foreground">Not configured</span>
-  }
-  return <span>{value}</span>
+function subline(l: Lender): string {
+  const signing =
+    l.accepts_esign && !l.requires_physical_contract
+      ? "e-sign"
+      : !l.accepts_esign && l.requires_physical_contract
+        ? "wet-ink"
+        : null
+  return [signing, `${l.days_to_bank_after_funding}d to bank`]
+    .filter(Boolean)
+    .join(" · ")
 }
 
 export function LenderTable({
   lenders,
   canManage,
+  activeCounts,
 }: {
   lenders: Lender[]
   canManage: boolean
+  activeCounts: Record<string, number>
 }) {
-  // "create" = new lender, a Lender = edit that row, null = sheet closed.
   const [editing, setEditing] = useState<Lender | "create" | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Lender | null>(null)
+  const [search, setSearch] = useState("")
+  const [portalFilter, setPortalFilter] = useState<string[]>([])
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
 
   const sheetOpen = editing !== null
   const editingLender = editing === "create" ? undefined : (editing ?? undefined)
 
-  return (
-    <div className="space-y-4">
-      {canManage && (
-        <div className="flex justify-end">
-          <Button onClick={() => setEditing("create")}>
-            <PlusIcon />
-            Add lender
-          </Button>
-        </div>
-      )}
+  const portalOptions = useMemo(() => {
+    const set = new Set<string>()
+    for (const l of lenders) if (l.communication_platform) set.add(l.communication_platform)
+    return [...set].sort()
+  }, [lenders])
 
-      {lenders.length === 0 ? (
-        <p className="rounded-lg border border-dashed px-4 py-10 text-center text-sm text-muted-foreground">
-          No lenders yet.
-          {canManage ? " Add your first one above." : ""}
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return lenders
+      .filter((l) => {
+        if (q && !l.name.toLowerCase().includes(q)) return false
+        if (
+          portalFilter.length &&
+          (!l.communication_platform || !portalFilter.includes(l.communication_platform))
+        )
+          return false
+        return true
+      })
+      .sort((a, b) =>
+        sortDir === "asc" ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name)
+      )
+  }, [lenders, search, portalFilter, sortDir])
+
+  const withThresholds = lenders.filter((l) => l.overdue_threshold_days != null).length
+  const toggle = (list: string[], v: string) =>
+    list.includes(v) ? list.filter((x) => x !== v) : [...list, v]
+
+  return (
+    <div>
+      <header className="mb-6 flex items-end justify-between">
+        <div>
+          <h1 className="text-2xl font-medium tracking-tight">Lenders</h1>
+          <p className="mt-1 text-xs text-fg-secondary">
+            <span className="font-mono">{lenders.length}</span> active ·{" "}
+            <span className="font-mono">{withThresholds}</span> thresholds set
+          </p>
+        </div>
+        {canManage && <Button onClick={() => setEditing("create")}>+ New lender</Button>}
+      </header>
+
+      <div className="mb-4 flex gap-2">
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search lender"
+          className="flex-1 bg-surface"
+        />
+        <DropdownMenu>
+          <DropdownMenuTrigger className={CHIP}>
+            portal{portalFilter.length ? ` · ${portalFilter.length}` : ""}
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {portalOptions.length === 0 ? (
+              <DropdownMenuLabel>No portals</DropdownMenuLabel>
+            ) : (
+              portalOptions.map((p) => (
+                <DropdownMenuCheckboxItem
+                  key={p}
+                  checked={portalFilter.includes(p)}
+                  onCheckedChange={() => setPortalFilter((prev) => toggle(prev, p))}
+                >
+                  {p}
+                </DropdownMenuCheckboxItem>
+              ))
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <DropdownMenu>
+          <DropdownMenuTrigger className={CHIP}>
+            name {sortDir === "asc" ? "↑" : "↓"}
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setSortDir("asc")}>
+              {sortDir === "asc" && <CheckIcon className="size-3.5" />}
+              Name (A→Z)
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setSortDir("desc")}>
+              {sortDir === "desc" && <CheckIcon className="size-3.5" />}
+              Name (Z→A)
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
+      {filtered.length === 0 ? (
+        <p className="rounded-lg border border-dashed border-line px-4 py-12 text-center text-sm text-fg-tertiary">
+          {lenders.length === 0 ? "No lenders yet." : "No lenders match your filters."}
         </p>
       ) : (
-        <div className="overflow-hidden rounded-lg border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Platform</TableHead>
-                <TableHead>Days clean</TableHead>
-                <TableHead>Overdue threshold</TableHead>
-                <TableHead>Flags</TableHead>
-                <TableHead>Stips</TableHead>
-                {canManage && (
-                  <TableHead className="text-right">Actions</TableHead>
-                )}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {lenders.map((lender) => (
-                <TableRow key={lender.id}>
-                  <TableCell className="font-medium">{lender.name}</TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {lender.communication_platform ?? "—"}
-                  </TableCell>
-                  <TableCell>
-                    <NumberCell value={lender.typical_days_clean} />
-                  </TableCell>
-                  <TableCell>
-                    <NumberCell value={lender.overdue_threshold_days} />
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-wrap gap-1">
-                      {FLAGS.filter((f) => lender[f.key]).map((f) => (
-                        <Badge key={f.key} variant="secondary">
-                          {f.label}
-                        </Badge>
-                      ))}
-                    </div>
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-muted-foreground">
-                    {lender.common_required_stips.length} req /{" "}
-                    {lender.commonly_ghosted_stips.length} ghosted
-                  </TableCell>
-                  {canManage && (
-                    <TableCell>
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={`Edit ${lender.name}`}
-                          onClick={() => setEditing(lender)}
-                        >
-                          <PencilIcon />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={`Delete ${lender.name}`}
-                          onClick={() => setDeleteTarget(lender)}
-                        >
-                          <Trash2Icon />
-                        </Button>
-                      </div>
-                    </TableCell>
+        <div>
+          <div
+            className={`${GRID} border-b border-line pb-2 font-mono text-xs lowercase tracking-widest text-fg-tertiary`}
+          >
+            <div>lender</div>
+            <div>portal</div>
+            <div className="text-right">threshold</div>
+            <div className="text-right">active</div>
+            <div />
+          </div>
+
+          {filtered.map((l) => {
+            const count = activeCounts[l.id] ?? 0
+            return (
+              <div
+                key={l.id}
+                className={`${GRID} border-b border-line/30 py-3.5 transition-colors hover:bg-surface/40`}
+              >
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium text-fg-primary">{l.name}</div>
+                  <div className="truncate font-mono text-[10px] lowercase text-fg-tertiary">
+                    {subline(l)}
+                  </div>
+                </div>
+                <div className="truncate font-mono text-sm text-fg-secondary">
+                  {l.communication_platform ?? "—"}
+                </div>
+                <div className="text-right font-mono text-fg-primary">
+                  {l.overdue_threshold_days == null ? (
+                    <span className="text-fg-muted">— not set</span>
+                  ) : (
+                    `${l.overdue_threshold_days} days`
                   )}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                </div>
+                <div
+                  className={`text-right font-mono ${count === 0 ? "font-normal text-fg-muted" : "font-bold text-fg-primary"}`}
+                >
+                  {count}
+                </div>
+                <div className="flex justify-end">
+                  {canManage && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        aria-label={`Actions for ${l.name}`}
+                        className="text-fg-tertiary outline-none transition-colors hover:text-fg-primary"
+                      >
+                        <MoreHorizontalIcon className="size-4" />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => setEditing(l)}>Edit</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setDeleteTarget(l)}>
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                </div>
+              </div>
+            )
+          })}
         </div>
       )}
 
@@ -156,12 +224,8 @@ export function LenderTable({
               Configure how this lender behaves during funding.
             </SheetDescription>
           </SheetHeader>
-          {/* Remount per open so react-hook-form picks up fresh defaultValues. */}
           {sheetOpen && (
-            <LenderForm
-              lender={editingLender}
-              onSuccess={() => setEditing(null)}
-            />
+            <LenderForm lender={editingLender} onSuccess={() => setEditing(null)} />
           )}
         </SheetContent>
       </Sheet>

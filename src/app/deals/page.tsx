@@ -79,29 +79,13 @@ export default async function DealsPage() {
     blocks: blocksByDeal[d.id] ?? [],
   }))
 
-  const blockStats = {
-    total: dealsWithBlocks.length,
-    withBlocks: dealsWithBlocks.filter((d) =>
-      d.blocks.some((b) => b.resolved_at === null)
-    ).length,
-  }
-
   return (
-    <div className="min-h-screen bg-background px-6 py-10">
-      <div className="mx-auto max-w-7xl space-y-8">
-        <header className="space-y-1">
-          <h1 className="text-2xl font-semibold">Active deals</h1>
-          <p className="text-muted-foreground">
-            Deals still working through the funding pipeline. Funded and unwound
-            deals drop off this list.
-          </p>
-        </header>
-
+    <div className="flex-1 px-6 py-8">
+      <div className="mx-auto max-w-7xl">
         <DealsTable
           deals={dealsWithBlocks}
           lenders={lenders ?? []}
           canMutate={canMutate}
-          blockStats={blockStats}
           userNames={userNames}
         />
       </div>

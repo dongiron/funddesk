@@ -60,6 +60,7 @@ export type Lender = {
   can_increase_lender_fee: boolean
   accepts_esign: boolean
   requires_physical_contract: boolean
+  days_to_bank_after_funding: number
   common_required_stips: string[]
   commonly_ghosted_stips: string[]
   operator_notes: string | null

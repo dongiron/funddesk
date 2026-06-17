@@ -32,6 +32,31 @@ export const PIPELINE_STATE_LABELS: Record<string, string> = {
   unwound: "Unwound",
 }
 
+// Short, lowercase labels for compact pills/badges in tables.
+export const PIPELINE_STATE_SHORT: Record<string, string> = {
+  signed: "signed",
+  waiting_for_scan: "waiting scan",
+  gathering_paperwork: "gathering pwk",
+  gathering_stips: "gathering stips",
+  ready_to_send: "ready",
+  submitted: "submitted",
+  awaiting_physical_delivery: "awaiting delivery",
+  waiting_to_fund: "waiting fund",
+  funds_in_transit: "in transit",
+  funded: "funded",
+  unwound: "unwound",
+}
+
+// Pill color variant per state. Gold = brand/near-funding, green = funded,
+// red = unwound, neutral = everything else. (Never semantic for the gold.)
+export type PillVariant = "gold" | "green" | "red" | "neutral"
+export function pillVariant(state: string): PillVariant {
+  if (state === "waiting_to_fund" || state === "funds_in_transit") return "gold"
+  if (state === "funded") return "green"
+  if (state === "unwound") return "red"
+  return "neutral"
+}
+
 // Selectable in the form: everything except 'unwound'.
 export const FORM_PIPELINE_STATES = PIPELINE_STATES.filter((s) => s !== "unwound")
 
@@ -165,7 +190,7 @@ export type Deal = {
   customer_first_name: string | null
   customer_last_name: string | null
   lender_id: string | null
-  lender: { name: string } | null
+  lender: { name: string; overdue_threshold_days: number | null } | null
   pipeline_state: string
   vehicle_year: number | null
   vehicle_make: string | null
@@ -226,7 +251,7 @@ export const DEAL_SELECT =
   "stips_received, has_trade, trade_year, trade_make, trade_model, trade_vin, " +
   "trade_acv, trade_allowance, trade_payoff_quoted, trade_payoff_lender, " +
   "trade_payoff_sent_date, trade_payoff_received_date, trade_title_received_date, " +
-  "unwound_date, unwind_reason, unwind_gross_profit, lender:lender_id(name)"
+  "unwound_date, unwind_reason, unwind_gross_profit, lender:lender_id(name, overdue_threshold_days)"
 
 // ── History date-range filter ────────────────────────────────────────────────
 export const RANGE_OPTIONS = [
