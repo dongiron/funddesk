@@ -8,7 +8,7 @@ import { phoenixToday, type Deal } from "../deal-schema"
 import { unwindDeal } from "../actions"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+import { Field } from "@/components/ui/form-section"
 import { Textarea } from "@/components/ui/textarea"
 import {
   Dialog,
@@ -72,24 +72,21 @@ function UnwindForm({ deal, onClose }: { deal: Deal; onClose: () => void }) {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-      <div className="space-y-1.5">
-        <Label htmlFor="unwind_reason">Reason</Label>
+      <Field label="reason" htmlFor="unwind_reason" error={errors.unwind_reason?.message}>
         <Textarea
           id="unwind_reason"
           rows={3}
           placeholder="Customer backed out, financing fell through, etc."
           {...register("unwind_reason")}
         />
-        {errors.unwind_reason && (
-          <p className="text-xs text-destructive">
-            {errors.unwind_reason.message}
-          </p>
-        )}
-      </div>
+      </Field>
 
       <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <Label htmlFor="unwind_gross_profit">Gross profit lost ($)</Label>
+        <Field
+          label="gross profit lost ($)"
+          htmlFor="unwind_gross_profit"
+          error={errors.unwind_gross_profit?.message}
+        >
           <Input
             id="unwind_gross_profit"
             type="number"
@@ -97,27 +94,20 @@ function UnwindForm({ deal, onClose }: { deal: Deal; onClose: () => void }) {
             placeholder="0.00"
             {...register("unwind_gross_profit")}
           />
-          {errors.unwind_gross_profit && (
-            <p className="text-xs text-destructive">
-              {errors.unwind_gross_profit.message}
-            </p>
-          )}
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="unwound_date">Unwound date</Label>
+        </Field>
+        <Field
+          label="unwound date"
+          htmlFor="unwound_date"
+          error={errors.unwound_date?.message}
+        >
           <Input id="unwound_date" type="date" {...register("unwound_date")} />
-          {errors.unwound_date && (
-            <p className="text-xs text-destructive">
-              {errors.unwound_date.message}
-            </p>
-          )}
-        </div>
+        </Field>
       </div>
 
       <DialogFooter>
         <Button
           type="button"
-          variant="outline"
+          variant="secondary"
           onClick={onClose}
           disabled={isSubmitting}
         >

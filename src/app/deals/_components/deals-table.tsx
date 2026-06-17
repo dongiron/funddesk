@@ -318,6 +318,7 @@ export function DealsTable({
               deal={editingDeal}
               lenders={lenders}
               onSuccess={() => setEditing(null)}
+              onCancel={() => setEditing(null)}
             />
           )}
         </SheetContent>

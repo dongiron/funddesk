@@ -6,7 +6,7 @@ import { toast } from "sonner"
 import { resolveBlockSchema, type ResolveBlockValues } from "../block-schema"
 import { resolveBlock } from "../actions"
 import { Button } from "@/components/ui/button"
-import { Label } from "@/components/ui/label"
+import { Field } from "@/components/ui/form-section"
 import { Textarea } from "@/components/ui/textarea"
 import {
   Dialog,
@@ -45,19 +45,18 @@ function ResolveForm({
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-      <div className="space-y-1.5">
-        <Label htmlFor="resolution_note">Resolution note (optional)</Label>
+      <Field label="resolution note (optional)" htmlFor="resolution_note">
         <Textarea
           id="resolution_note"
           rows={3}
           placeholder="How was it resolved?"
           {...register("resolution_note")}
         />
-      </div>
+      </Field>
       <DialogFooter>
         <Button
           type="button"
-          variant="outline"
+          variant="secondary"
           onClick={onClose}
           disabled={isSubmitting}
         >

@@ -12,9 +12,10 @@ import {
 import { createLender, updateLender } from "../actions"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Checkbox } from "@/components/ui/checkbox"
+import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
+import { FormSection, Field, ToggleRow } from "@/components/ui/form-section"
+import { SheetFooter } from "@/components/ui/sheet"
 
 type BooleanField = Extract<
   keyof LenderFormValues,
@@ -64,9 +65,11 @@ function toDefaults(lender?: Lender): LenderFormValues {
 export function LenderForm({
   lender,
   onSuccess,
+  onCancel,
 }: {
   lender?: Lender
   onSuccess: () => void
+  onCancel?: () => void
 }) {
   const {
     register,
@@ -93,119 +96,115 @@ export function LenderForm({
   }
 
   return (
-    <form
-      onSubmit={handleSubmit(onSubmit)}
-      className="flex flex-col gap-4 px-4 pb-4"
-    >
-      <div className="space-y-2">
-        <Label htmlFor="name">Lender name</Label>
-        <Input id="name" {...register("name")} placeholder="e.g. Westlake Financial" />
-        {errors.name && (
-          <p className="text-sm text-destructive">{errors.name.message}</p>
-        )}
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="communication_platform">Communication platform</Label>
-        <Input
-          id="communication_platform"
-          {...register("communication_platform")}
-          placeholder="e.g. CUDL, DealerCenter via RouteOne"
-        />
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-2">
-          <Label htmlFor="typical_days_clean">Typical days clean</Label>
-          <Input
-            id="typical_days_clean"
-            type="number"
-            min={0}
-            {...register("typical_days_clean")}
-            placeholder="—"
-          />
-          {errors.typical_days_clean && (
-            <p className="text-sm text-destructive">
-              {errors.typical_days_clean.message}
-            </p>
-          )}
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="overdue_threshold_days">Overdue threshold</Label>
-          <Input
-            id="overdue_threshold_days"
-            type="number"
-            min={0}
-            {...register("overdue_threshold_days")}
-            placeholder="—"
-          />
-          {errors.overdue_threshold_days && (
-            <p className="text-sm text-destructive">
-              {errors.overdue_threshold_days.message}
-            </p>
-          )}
-        </div>
-      </div>
-
-      <fieldset className="space-y-2">
-        <legend className="text-sm font-medium">Behavior</legend>
-        {BOOLEAN_FIELDS.map((f) => (
-          <div key={f.key} className="flex items-center gap-2">
-            <Controller
-              control={control}
-              name={f.key}
-              render={({ field }) => (
-                <Checkbox
-                  id={f.key}
-                  checked={field.value}
-                  onCheckedChange={(checked) => field.onChange(checked === true)}
-                />
-              )}
+    <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col">
+      <div className="space-y-8 px-6 py-6">
+        {/* 01 — Identity */}
+        <FormSection index="01" title="identity">
+          <Field label="lender name" htmlFor="name" error={errors.name?.message}>
+            <Input id="name" {...register("name")} placeholder="e.g. Westlake Financial" />
+          </Field>
+          <Field label="communication platform" htmlFor="communication_platform">
+            <Input
+              id="communication_platform"
+              {...register("communication_platform")}
+              placeholder="e.g. CUDL, DealerCenter via RouteOne"
             />
-            <Label htmlFor={f.key} className="font-normal">
-              {f.label}
-            </Label>
+          </Field>
+        </FormSection>
+
+        {/* 02 — Timing */}
+        <FormSection index="02" title="timing">
+          <div className="grid grid-cols-2 gap-3">
+            <Field
+              label="typical days clean"
+              htmlFor="typical_days_clean"
+              error={errors.typical_days_clean?.message}
+            >
+              <Input
+                id="typical_days_clean"
+                type="number"
+                min={0}
+                {...register("typical_days_clean")}
+                placeholder="—"
+              />
+            </Field>
+            <Field
+              label="overdue threshold"
+              htmlFor="overdue_threshold_days"
+              error={errors.overdue_threshold_days?.message}
+            >
+              <Input
+                id="overdue_threshold_days"
+                type="number"
+                min={0}
+                {...register("overdue_threshold_days")}
+                placeholder="—"
+              />
+            </Field>
           </div>
-        ))}
-      </fieldset>
+        </FormSection>
 
-      <div className="space-y-2">
-        <Label htmlFor="common_required_stips">Common required stips</Label>
-        <Input
-          id="common_required_stips"
-          {...register("common_required_stips")}
-          placeholder="paystub, proof of residence, insurance"
-        />
-        <p className="text-xs text-muted-foreground">Comma-separated.</p>
+        {/* 03 — Behavior */}
+        <FormSection index="03" title="behavior">
+          {BOOLEAN_FIELDS.map((f) => (
+            <ToggleRow key={f.key} label={f.label}>
+              <Controller
+                control={control}
+                name={f.key}
+                render={({ field }) => (
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={(checked) => field.onChange(checked)}
+                  />
+                )}
+              />
+            </ToggleRow>
+          ))}
+        </FormSection>
+
+        {/* 04 — Stips & notes */}
+        <FormSection index="04" title="stips & notes">
+          <Field
+            label="common required stips"
+            htmlFor="common_required_stips"
+            hint="Comma-separated."
+          >
+            <Input
+              id="common_required_stips"
+              {...register("common_required_stips")}
+              placeholder="paystub, proof of residence, insurance"
+            />
+          </Field>
+          <Field
+            label="commonly ghosted stips"
+            htmlFor="commonly_ghosted_stips"
+            hint="Comma-separated."
+          >
+            <Input
+              id="commonly_ghosted_stips"
+              {...register("commonly_ghosted_stips")}
+              placeholder="paystub, references"
+            />
+          </Field>
+          <Field label="operator notes" htmlFor="operator_notes">
+            <Textarea
+              id="operator_notes"
+              rows={4}
+              {...register("operator_notes")}
+              placeholder="Quirks, escalation contacts, funding window hours…"
+            />
+          </Field>
+        </FormSection>
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="commonly_ghosted_stips">Commonly ghosted stips</Label>
-        <Input
-          id="commonly_ghosted_stips"
-          {...register("commonly_ghosted_stips")}
-          placeholder="paystub, references"
-        />
-        <p className="text-xs text-muted-foreground">Comma-separated.</p>
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="operator_notes">Operator notes</Label>
-        <Textarea
-          id="operator_notes"
-          rows={4}
-          {...register("operator_notes")}
-          placeholder="Quirks, escalation contacts, funding window hours…"
-        />
-      </div>
-
-      <Button type="submit" disabled={isSubmitting} className="mt-2">
-        {isSubmitting
-          ? "Saving…"
-          : lender
-            ? "Save changes"
-            : "Add lender"}
-      </Button>
+      <SheetFooter>
+        <Button type="button" variant="secondary" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={isSubmitting} className="ml-auto">
+          {isSubmitting ? "Saving…" : lender ? "Save changes" : "Add lender"}
+        </Button>
+      </SheetFooter>
     </form>
   )
 }

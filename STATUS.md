@@ -22,6 +22,9 @@
 - First-user-at-new-dealership flow is currently manual SQL bootstrap — design a real onboarding server action before customer #2
 - `users` insert policy requires existing owner/manager — chicken-and-egg for new dealerships (same issue as above)
 
+## Parked Items
+- `unwind_gross_profit`: relax the `>= 0` CHECK to allow negatives, change semantics to **positive = recovered / negative = additional loss**. Requires a migration + updating the unwind dialog label/validation. Parked during the design overhaul (commit 3) — the field stays non-negative ("gross profit lost") for now.
+
 ## Next Session Plan
 1. Migration 0004: extend `lenders` with typical_days_to_fund, overdue_threshold_days, ghost_patterns notes
 2. Build lender list UI as first real feature page

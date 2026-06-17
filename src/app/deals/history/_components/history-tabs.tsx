@@ -141,6 +141,7 @@ export function HistoryTabs({
               lenders={[]}
               readOnly
               onSuccess={() => setSelected(null)}
+              onCancel={() => setSelected(null)}
             />
           )}
         </SheetContent>

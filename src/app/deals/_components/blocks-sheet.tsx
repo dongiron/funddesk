@@ -90,11 +90,13 @@ export function BlocksSheet({
         </SheetHeader>
 
         {deal && (
-          <div className="space-y-6 px-4 pb-6">
+          <div className="space-y-8 px-6 py-6">
             {/* Active */}
             <section className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold">Active ({active.length})</h3>
+              <div className="flex items-center justify-between border-b border-line pb-2">
+                <h3 className="font-mono text-xs lowercase tracking-wider text-fg-tertiary">
+                  active <span className="text-fg-primary">({active.length})</span>
+                </h3>
                 {canMutate && !showAddForm && (
                   <Button size="sm" onClick={() => setShowAddForm(true)}>
                     <PlusIcon />
@@ -112,16 +114,19 @@ export function BlocksSheet({
               )}
 
               {active.length === 0 ? (
-                <p className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+                <p className="rounded-lg border border-dashed border-line px-4 py-6 text-center text-sm text-fg-tertiary">
                   No active blocks.
                 </p>
               ) : (
                 <ul className="space-y-2">
                   {active.map((b) => (
-                    <li key={b.id} className="space-y-1 rounded-lg border p-3">
+                    <li
+                      key={b.id}
+                      className="space-y-1.5 rounded-lg border border-line bg-surface p-3"
+                    >
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium">
+                          <span className="text-sm font-medium text-fg-primary">
                             {BLOCK_TYPE_LABELS[
                               b.block_type as keyof typeof BLOCK_TYPE_LABELS
                             ] ?? b.block_type}
@@ -141,12 +146,12 @@ export function BlocksSheet({
                         )}
                       </div>
                       {b.block_detail && (
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-sm text-fg-secondary">
                           {b.block_detail}
                         </p>
                       )}
-                      <p className="text-xs text-muted-foreground">
-                        Opened by {name(b.opened_by)} ·{" "}
+                      <p className="font-mono text-xs text-fg-tertiary">
+                        opened by {name(b.opened_by)} ·{" "}
                         {relativeTime(b.opened_at)}
                       </p>
                     </li>
@@ -160,19 +165,19 @@ export function BlocksSheet({
               <button
                 type="button"
                 onClick={() => setResolvedExpanded((v) => !v)}
-                className="flex items-center gap-1 text-sm font-semibold"
+                className="flex w-full items-center gap-1 border-b border-line pb-2 font-mono text-xs lowercase tracking-wider text-fg-tertiary transition-colors hover:text-fg-primary"
               >
                 {resolvedExpanded ? (
                   <ChevronDownIcon className="size-4" />
                 ) : (
                   <ChevronRightIcon className="size-4" />
                 )}
-                Resolved ({resolved.length})
+                resolved <span className="text-fg-primary">({resolved.length})</span>
               </button>
 
               {resolvedExpanded &&
                 (resolved.length === 0 ? (
-                  <p className="px-1 text-sm text-muted-foreground">
+                  <p className="px-1 text-sm text-fg-tertiary">
                     Nothing resolved yet.
                   </p>
                 ) : (
@@ -180,10 +185,10 @@ export function BlocksSheet({
                     {resolved.map((b) => (
                       <li
                         key={b.id}
-                        className="space-y-1 rounded-lg border p-3 opacity-60"
+                        className="space-y-1.5 rounded-lg border border-line bg-surface p-3 opacity-60"
                       >
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium">
+                          <span className="text-sm font-medium text-fg-primary">
                             {BLOCK_TYPE_LABELS[
                               b.block_type as keyof typeof BLOCK_TYPE_LABELS
                             ] ?? b.block_type}
@@ -193,21 +198,21 @@ export function BlocksSheet({
                           </Badge>
                         </div>
                         {b.block_detail && (
-                          <p className="text-sm text-muted-foreground">
+                          <p className="text-sm text-fg-secondary">
                             {b.block_detail}
                           </p>
                         )}
                         {b.resolution_note && (
-                          <p className="text-sm">
+                          <p className="text-sm text-fg-primary">
                             Resolution: {b.resolution_note}
                           </p>
                         )}
-                        <p className="text-xs text-muted-foreground">
-                          Resolved by {name(b.resolved_by)} ·{" "}
+                        <p className="font-mono text-xs text-fg-tertiary">
+                          resolved by {name(b.resolved_by)} ·{" "}
                           {relativeTime(b.resolved_at)}
                         </p>
-                        <p className="text-xs text-muted-foreground">
-                          Opened {relativeTime(b.opened_at)}
+                        <p className="font-mono text-xs text-fg-tertiary">
+                          opened {relativeTime(b.opened_at)}
                         </p>
                       </li>
                     ))}

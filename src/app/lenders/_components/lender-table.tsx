@@ -225,7 +225,11 @@ export function LenderTable({
             </SheetDescription>
           </SheetHeader>
           {sheetOpen && (
-            <LenderForm lender={editingLender} onSuccess={() => setEditing(null)} />
+            <LenderForm
+              lender={editingLender}
+              onSuccess={() => setEditing(null)}
+              onCancel={() => setEditing(null)}
+            />
           )}
         </SheetContent>
       </Sheet>

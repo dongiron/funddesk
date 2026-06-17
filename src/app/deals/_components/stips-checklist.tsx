@@ -65,37 +65,61 @@ export function StipsChecklist({
     setCustom("")
   }
 
+  const receivedCount = effectiveRequired.filter(isChecked).length
+
   return (
     <div className="space-y-3">
       {effectiveRequired.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No stips yet.</p>
+        <p className="text-sm text-fg-tertiary">No stips yet.</p>
       ) : (
-        <ul className="space-y-1.5">
-          {effectiveRequired.map((stip, i) => (
-            <li key={`${stip}-${i}`} className="flex items-center gap-2">
-              <Checkbox
-                id={`stip-${i}`}
-                checked={isChecked(stip)}
-                disabled={disabled}
-                onCheckedChange={(c) => toggle(stip, c === true)}
-              />
-              <Label htmlFor={`stip-${i}`} className="flex-1 font-normal">
-                {stip}
-              </Label>
-              {!disabled && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={`Remove ${stip}`}
-                  onClick={() => remove(stip)}
+        <>
+          <div className="flex items-center justify-between font-mono text-xs tracking-wider text-fg-tertiary">
+            <span className="lowercase">checklist</span>
+            <span>
+              <span
+                className={
+                  receivedCount === effectiveRequired.length
+                    ? "text-success"
+                    : "text-fg-primary"
+                }
+              >
+                {receivedCount}
+              </span>
+              /{effectiveRequired.length} received
+            </span>
+          </div>
+          <ul className="space-y-1.5">
+            {effectiveRequired.map((stip, i) => (
+              <li key={`${stip}-${i}`} className="flex items-center gap-2">
+                <Checkbox
+                  id={`stip-${i}`}
+                  checked={isChecked(stip)}
+                  disabled={disabled}
+                  onCheckedChange={(c) => toggle(stip, c === true)}
+                />
+                <Label
+                  htmlFor={`stip-${i}`}
+                  className={`flex-1 font-normal ${
+                    isChecked(stip) ? "text-fg-tertiary line-through" : "text-fg-primary"
+                  }`}
                 >
-                  <XIcon />
-                </Button>
-              )}
-            </li>
-          ))}
-        </ul>
+                  {stip}
+                </Label>
+                {!disabled && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`Remove ${stip}`}
+                    onClick={() => remove(stip)}
+                  >
+                    <XIcon />
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </>
       )}
 
       {!disabled && (
@@ -111,12 +135,7 @@ export function StipsChecklist({
             }}
             placeholder="Add custom stip"
           />
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={addCustom}
-          >
+          <Button type="button" variant="secondary" size="sm" onClick={addCustom}>
             Add
           </Button>
         </div>

@@ -11,7 +11,7 @@ import {
 } from "../block-schema"
 import { createBlock } from "../actions"
 import { Button } from "@/components/ui/button"
-import { Label } from "@/components/ui/label"
+import { Field } from "@/components/ui/form-section"
 import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
@@ -55,10 +55,9 @@ export function AddBlockForm({
   return (
     <form
       onSubmit={handleSubmit(onSubmit)}
-      className="space-y-3 rounded-lg border bg-muted/30 p-3"
+      className="space-y-3 rounded-lg border border-line bg-surface p-3"
     >
-      <div className="space-y-1.5">
-        <Label htmlFor="block_type">Block type</Label>
+      <Field label="block type" htmlFor="block_type" error={errors.block_type?.message}>
         <Controller
           control={control}
           name="block_type"
@@ -85,25 +84,21 @@ export function AddBlockForm({
             </Select>
           )}
         />
-        {errors.block_type && (
-          <p className="text-xs text-destructive">{errors.block_type.message}</p>
-        )}
-      </div>
+      </Field>
 
-      <div className="space-y-1.5">
-        <Label htmlFor="block_detail">Detail (optional)</Label>
+      <Field label="detail (optional)" htmlFor="block_detail">
         <Textarea
           id="block_detail"
           rows={2}
           placeholder="What specifically needs to happen?"
           {...register("block_detail")}
         />
-      </div>
+      </Field>
 
       <div className="flex justify-end gap-2">
         <Button
           type="button"
-          variant="outline"
+          variant="secondary"
           size="sm"
           onClick={onCancel}
           disabled={isSubmitting}

@@ -83,32 +83,50 @@ function StipsSheetBody({
   }
 
   return (
-    <div className="space-y-4 px-4 pb-6">
-      <StipsChecklist
-        stips_required={required}
-        stips_received={received}
-        onChange={(next) => {
-          setRequired(next.stips_required)
-          setReceived(next.stips_received)
-        }}
-        disabled={!canMutate}
-      />
-      {canMutate && (
-        <SheetFooter>
+    <>
+      <div className="px-6 py-6">
+        <StipsChecklist
+          stips_required={required}
+          stips_received={received}
+          onChange={(next) => {
+            setRequired(next.stips_required)
+            setReceived(next.stips_received)
+          }}
+          disabled={!canMutate}
+        />
+      </div>
+      <SheetFooter>
+        {canMutate ? (
+          <>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={onClose}
+              disabled={saving}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={save}
+              disabled={saving}
+              className="ml-auto"
+            >
+              {saving ? "Saving…" : "Save"}
+            </Button>
+          </>
+        ) : (
           <Button
             type="button"
-            variant="outline"
+            variant="secondary"
+            className="ml-auto"
             onClick={onClose}
-            disabled={saving}
           >
-            Cancel
+            Done
           </Button>
-          <Button type="button" onClick={save} disabled={saving}>
-            {saving ? "Saving…" : "Save"}
-          </Button>
-        </SheetFooter>
-      )}
-    </div>
+        )}
+      </SheetFooter>
+    </>
   )
 }
 

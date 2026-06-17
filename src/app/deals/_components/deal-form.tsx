@@ -25,8 +25,9 @@ import {
 import { createDeal, updateDeal } from "../actions"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Checkbox } from "@/components/ui/checkbox"
+import { Switch } from "@/components/ui/switch"
+import { FormSection, Field, ToggleRow } from "@/components/ui/form-section"
+import { SheetFooter } from "@/components/ui/sheet"
 import {
   Select,
   SelectContent,
@@ -57,8 +58,7 @@ function TField({
 }) {
   const error = errors[name]?.message as string | undefined
   return (
-    <div className="space-y-1.5">
-      <Label htmlFor={name}>{label}</Label>
+    <Field label={label} htmlFor={name} error={error}>
       <Input
         id={name}
         type={type}
@@ -66,8 +66,7 @@ function TField({
         placeholder={placeholder}
         {...register(name)}
       />
-      {error && <p className="text-xs text-destructive">{error}</p>}
-    </div>
+    </Field>
   )
 }
 
@@ -89,8 +88,7 @@ function DateField({
 }) {
   const error = errors[name]?.message as string | undefined
   return (
-    <div className="space-y-1.5">
-      <Label htmlFor={name}>{label}</Label>
+    <Field label={label} htmlFor={name} error={error}>
       <Controller
         control={control}
         name={name}
@@ -117,14 +115,7 @@ function DateField({
           </div>
         )}
       />
-      {error && <p className="text-xs text-destructive">{error}</p>}
-    </div>
-  )
-}
-
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return (
-    <h3 className="text-sm font-semibold text-foreground">{children}</h3>
+    </Field>
   )
 }
 
@@ -180,11 +171,13 @@ export function DealForm({
   deal,
   lenders,
   onSuccess,
+  onCancel,
   readOnly = false,
 }: {
   deal?: Deal
   lenders: LenderOption[]
   onSuccess: () => void
+  onCancel?: () => void
   readOnly?: boolean
 }) {
   const {
@@ -286,269 +279,255 @@ export function DealForm({
     <form
       onSubmit={handleSubmit(onSubmit)}
       autoComplete="off"
-      className="flex flex-col gap-6 px-4 pb-6"
+      className="flex flex-col"
     >
       <fieldset disabled={readOnly} className="contents">
-      {/* 1 — Customer */}
-      <section className="space-y-3">
-        <SectionTitle>Customer</SectionTitle>
-        <div className="grid grid-cols-2 gap-3">
-          <TField name="customer_first_name" label="First name" register={register} errors={errors} />
-          <TField name="customer_last_name" label="Last name" register={register} errors={errors} />
-        </div>
-      </section>
+        <div className="space-y-8 px-6 py-6">
+          {/* 01 — Customer */}
+          <FormSection index="01" title="customer">
+            <div className="grid grid-cols-2 gap-3">
+              <TField name="customer_first_name" label="first name" register={register} errors={errors} />
+              <TField name="customer_last_name" label="last name" register={register} errors={errors} />
+            </div>
+          </FormSection>
 
-      {/* 2 — Vehicle */}
-      <section className="space-y-3">
-        <SectionTitle>Vehicle</SectionTitle>
-        <div className="grid grid-cols-2 gap-3">
-          <TField name="vehicle_year" label="Year" type="number" step="1" register={register} errors={errors} />
-          <TField name="vehicle_make" label="Make" register={register} errors={errors} />
-          <TField name="vehicle_model" label="Model" register={register} errors={errors} />
-          <TField name="stock_number" label="Stock #" register={register} errors={errors} />
-          <div className="col-span-2">
-            <TField name="vehicle_vin" label="VIN" register={register} errors={errors} />
-            {vinDecoding && (
-              <p className="mt-1 text-xs text-muted-foreground">Decoding…</p>
-            )}
-          </div>
-        </div>
-      </section>
+          {/* 02 — Vehicle */}
+          <FormSection index="02" title="vehicle">
+            <div className="grid grid-cols-2 gap-3">
+              <TField name="vehicle_year" label="year" type="number" step="1" register={register} errors={errors} />
+              <TField name="vehicle_make" label="make" register={register} errors={errors} />
+              <TField name="vehicle_model" label="model" register={register} errors={errors} />
+              <TField name="stock_number" label="stock #" register={register} errors={errors} />
+              <div className="col-span-2">
+                <TField name="vehicle_vin" label="vin" register={register} errors={errors} />
+                {vinDecoding && (
+                  <p className="mt-1 font-mono text-xs text-gold">decoding…</p>
+                )}
+              </div>
+            </div>
+          </FormSection>
 
-      {/* 3 — Lender */}
-      <section className="space-y-3">
-        <SectionTitle>Lender</SectionTitle>
-        <div className="space-y-1.5">
-          <Label htmlFor="lender_id">Lender</Label>
-          {readOnly ? (
-            <p className="text-sm">{deal?.lender?.name ?? "—"}</p>
-          ) : (
-            <>
+          {/* 03 — Financial (lender + numbers) */}
+          <FormSection index="03" title="financial">
+            <Field label="lender" htmlFor="lender_id" error={errors.lender_id?.message}>
+              {readOnly ? (
+                <p className="text-sm text-fg-primary">{deal?.lender?.name ?? "—"}</p>
+              ) : (
+                <Controller
+                  control={control}
+                  name="lender_id"
+                  render={({ field }) => (
+                    <Select
+                      value={field.value || null}
+                      onValueChange={(v) => field.onChange((v as string) ?? "")}
+                    >
+                      <SelectTrigger id="lender_id" className="w-full">
+                        {/* base-ui SelectValue shows the raw value (UUID) unless
+                            given a function to map it to a label. */}
+                        <SelectValue placeholder="Select a lender">
+                          {(value) => {
+                            const id = value as string | null
+                            if (!id) return "Select a lender"
+                            return (
+                              lenders.find((l) => l.id === id)?.name ??
+                              // Fallback for a soft-deleted lender not in the
+                              // active list: use the joined name from the deal.
+                              (id === deal?.lender_id
+                                ? deal?.lender?.name
+                                : null) ??
+                              id
+                            )
+                          }}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {lenders.map((l) => (
+                          <SelectItem key={l.id} value={l.id}>
+                            {l.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              )}
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <TField name="amount_financed" label="amount financed" type="number" step="0.01" register={register} errors={errors} />
+              <TField name="term_months" label="term (months)" type="number" step="1" register={register} errors={errors} />
+              <TField name="apr" label="apr (%)" type="number" step="0.0001" register={register} errors={errors} />
+              <TField name="monthly_payment" label="monthly payment" type="number" step="0.01" register={register} errors={errors} />
+              <TField name="front_gross" label="front gross" type="number" step="0.01" register={register} errors={errors} />
+              <TField name="back_gross" label="back gross" type="number" step="0.01" register={register} errors={errors} />
+              <TField name="pack" label="pack" type="number" step="0.01" register={register} errors={errors} />
+              <TField name="reserve" label="reserve" type="number" step="0.01" register={register} errors={errors} />
+            </div>
+          </FormSection>
+
+          {/* 04 — Dates */}
+          <FormSection index="04" title="dates">
+            <div className="grid grid-cols-2 gap-3">
+              <DateField name="sold_date" label="sold date" control={control} errors={errors} clearable={false} />
+              <DateField name="submitted_to_lender_date" label="submitted to lender" control={control} errors={errors} />
+              <DateField name="funded_date" label="funded date" control={control} errors={errors} />
+              <DateField name="physical_contract_mailed_date" label="physical contract mailed" control={control} errors={errors} />
+            </div>
+          </FormSection>
+
+          {/* 05 — Trade-in */}
+          <FormSection index="05" title="trade-in">
+            <ToggleRow label="Customer has a trade-in">
               <Controller
                 control={control}
-                name="lender_id"
+                name="has_trade"
                 render={({ field }) => (
-                  <Select
-                    value={field.value || null}
-                    onValueChange={(v) => field.onChange((v as string) ?? "")}
-                  >
-                    <SelectTrigger id="lender_id" className="w-full">
-                      {/* base-ui SelectValue shows the raw value (UUID) unless
-                          given a function to map it to a label. */}
-                      <SelectValue placeholder="Select a lender">
-                        {(value) => {
-                          const id = value as string | null
-                          if (!id) return "Select a lender"
-                          return (
-                            lenders.find((l) => l.id === id)?.name ??
-                            // Fallback for a soft-deleted lender not in the
-                            // active list: use the joined name from the deal.
-                            (id === deal?.lender_id
-                              ? deal?.lender?.name
-                              : null) ??
-                            id
-                          )
-                        }}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {lenders.map((l) => (
-                        <SelectItem key={l.id} value={l.id}>
-                          {l.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={(c) => field.onChange(c)}
+                  />
                 )}
               />
-              {errors.lender_id && (
-                <p className="text-xs text-destructive">
-                  {errors.lender_id.message}
+            </ToggleRow>
+
+            {hasTrade && (
+              <div className="grid grid-cols-2 gap-3 rounded-lg border border-dashed border-line p-3">
+                <TField name="trade_year" label="trade year" type="number" step="1" register={register} errors={errors} />
+                <TField name="trade_make" label="trade make" register={register} errors={errors} />
+                <TField name="trade_model" label="trade model" register={register} errors={errors} />
+                <TField name="trade_vin" label="trade vin" register={register} errors={errors} />
+                <TField name="trade_acv" label="acv" type="number" step="0.01" register={register} errors={errors} />
+                <TField name="trade_allowance" label="allowance" type="number" step="0.01" register={register} errors={errors} />
+                <TField name="trade_payoff_quoted" label="payoff quoted" type="number" step="0.01" register={register} errors={errors} />
+                <TField name="trade_payoff_lender" label="payoff lender" register={register} errors={errors} />
+                <DateField name="trade_payoff_sent_date" label="payoff sent" control={control} errors={errors} />
+                <DateField name="trade_payoff_received_date" label="payoff received" control={control} errors={errors} />
+                <div className="col-span-2">
+                  <DateField name="trade_title_received_date" label="title received" control={control} errors={errors} />
+                </div>
+              </div>
+            )}
+          </FormSection>
+
+          {/* 06 — Stips */}
+          <FormSection index="06" title="stips">
+            <StipsChecklist
+              stips_required={stipsRequired ?? []}
+              stips_received={stipsReceived ?? []}
+              onChange={(next) => {
+                setValue("stips_required", next.stips_required)
+                setValue("stips_received", next.stips_received)
+              }}
+              disabled={readOnly}
+            />
+          </FormSection>
+
+          {/* 07 — Status */}
+          <FormSection index="07" title="status">
+            <Field label="pipeline state" htmlFor="pipeline_state">
+              {readOnly ? (
+                <p className="text-sm text-fg-primary">
+                  {PIPELINE_STATE_LABELS[deal?.pipeline_state ?? ""] ??
+                    deal?.pipeline_state ??
+                    "—"}
                 </p>
+              ) : (
+                <Controller
+                  control={control}
+                  name="pipeline_state"
+                  render={({ field }) => (
+                    <Select
+                      value={field.value}
+                      onValueChange={(v) => field.onChange(v as string)}
+                    >
+                      <SelectTrigger id="pipeline_state" className="w-full">
+                        <SelectValue>
+                          {(value) =>
+                            PIPELINE_STATE_LABELS[value as string] ??
+                            (value as string) ??
+                            ""
+                          }
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {FORM_PIPELINE_STATES.map((s) => (
+                          <SelectItem key={s} value={s}>
+                            {PIPELINE_STATE_LABELS[s]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
               )}
-            </>
+            </Field>
+            {!readOnly && (
+              <p className="text-xs text-fg-muted">
+                To unwind a deal, use the Unwind action on the list, not this
+                dropdown.
+              </p>
+            )}
+            <ToggleRow label="Requires a physical (wet-ink) contract">
+              <Controller
+                control={control}
+                name="physical_contract_required"
+                render={({ field }) => (
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={(c) => field.onChange(c)}
+                  />
+                )}
+              />
+            </ToggleRow>
+          </FormSection>
+
+          {readOnly && deal?.pipeline_state === "unwound" && (
+            <FormSection index="08" title="unwind details">
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="unwound date">
+                  <p className="font-mono text-sm text-fg-primary">
+                    {deal.unwound_date ?? "—"}
+                  </p>
+                </Field>
+                <Field label="gross profit lost">
+                  <p className="font-mono text-sm text-danger">
+                    {deal.unwind_gross_profit == null
+                      ? "—"
+                      : usd.format(Number(deal.unwind_gross_profit))}
+                  </p>
+                </Field>
+                <div className="col-span-2">
+                  <Field label="reason">
+                    <p className="text-sm whitespace-pre-wrap text-fg-primary">
+                      {deal.unwind_reason ?? "—"}
+                    </p>
+                  </Field>
+                </div>
+              </div>
+            </FormSection>
           )}
         </div>
-      </section>
-
-      {/* 4 — Pipeline state */}
-      <section className="space-y-3">
-        <SectionTitle>Pipeline state</SectionTitle>
-        {readOnly ? (
-          <p className="text-sm">
-            {PIPELINE_STATE_LABELS[deal?.pipeline_state ?? ""] ??
-              deal?.pipeline_state ??
-              "—"}
-          </p>
-        ) : (
-          <>
-            <Controller
-              control={control}
-              name="pipeline_state"
-              render={({ field }) => (
-                <Select
-                  value={field.value}
-                  onValueChange={(v) => field.onChange(v as string)}
-                >
-                  <SelectTrigger id="pipeline_state" className="w-full">
-                    <SelectValue>
-                      {(value) =>
-                        PIPELINE_STATE_LABELS[value as string] ??
-                        (value as string) ??
-                        ""
-                      }
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {FORM_PIPELINE_STATES.map((s) => (
-                      <SelectItem key={s} value={s}>
-                        {PIPELINE_STATE_LABELS[s]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            />
-            <p className="text-xs text-muted-foreground">
-              To unwind a deal, use the Unwind action on the list, not this
-              dropdown.
-            </p>
-          </>
-        )}
-      </section>
-
-      {/* 5 — Financial */}
-      <section className="space-y-3">
-        <SectionTitle>Financial</SectionTitle>
-        <div className="grid grid-cols-2 gap-3">
-          <TField name="amount_financed" label="Amount financed" type="number" step="0.01" register={register} errors={errors} />
-          <TField name="term_months" label="Term (months)" type="number" step="1" register={register} errors={errors} />
-          <TField name="apr" label="APR (%)" type="number" step="0.0001" register={register} errors={errors} />
-          <TField name="monthly_payment" label="Monthly payment" type="number" step="0.01" register={register} errors={errors} />
-          <TField name="front_gross" label="Front gross" type="number" step="0.01" register={register} errors={errors} />
-          <TField name="back_gross" label="Back gross" type="number" step="0.01" register={register} errors={errors} />
-          <TField name="pack" label="Pack" type="number" step="0.01" register={register} errors={errors} />
-          <TField name="reserve" label="Reserve" type="number" step="0.01" register={register} errors={errors} />
-        </div>
-      </section>
-
-      {/* 6 — Dates */}
-      <section className="space-y-3">
-        <SectionTitle>Dates</SectionTitle>
-        <div className="grid grid-cols-2 gap-3">
-          <DateField name="sold_date" label="Sold date" control={control} errors={errors} clearable={false} />
-          <DateField name="submitted_to_lender_date" label="Submitted to lender" control={control} errors={errors} />
-          <DateField name="funded_date" label="Funded date" control={control} errors={errors} />
-          <DateField name="physical_contract_mailed_date" label="Physical contract mailed" control={control} errors={errors} />
-        </div>
-      </section>
-
-      {/* 7 — Physical contract */}
-      <section className="space-y-3">
-        <SectionTitle>Physical contract</SectionTitle>
-        <div className="flex items-center gap-2">
-          <Controller
-            control={control}
-            name="physical_contract_required"
-            render={({ field }) => (
-              <Checkbox
-                id="physical_contract_required"
-                checked={field.value}
-                onCheckedChange={(c) => field.onChange(c === true)}
-              />
-            )}
-          />
-          <Label htmlFor="physical_contract_required" className="font-normal">
-            Requires a physical (wet-ink) contract
-          </Label>
-        </div>
-      </section>
-
-      {/* 8 — Stips */}
-      <section className="space-y-3">
-        <SectionTitle>Stips</SectionTitle>
-        <StipsChecklist
-          stips_required={stipsRequired ?? []}
-          stips_received={stipsReceived ?? []}
-          onChange={(next) => {
-            setValue("stips_required", next.stips_required)
-            setValue("stips_received", next.stips_received)
-          }}
-          disabled={readOnly}
-        />
-      </section>
-
-      {/* 9 — Trade */}
-      <section className="space-y-3">
-        <SectionTitle>Trade-in</SectionTitle>
-        <div className="flex items-center gap-2">
-          <Controller
-            control={control}
-            name="has_trade"
-            render={({ field }) => (
-              <Checkbox
-                id="has_trade"
-                checked={field.value}
-                onCheckedChange={(c) => field.onChange(c === true)}
-              />
-            )}
-          />
-          <Label htmlFor="has_trade" className="font-normal">
-            Customer has a trade-in
-          </Label>
-        </div>
-
-        {hasTrade && (
-          <div className="grid grid-cols-2 gap-3 rounded-lg border border-dashed p-3">
-            <TField name="trade_year" label="Trade year" type="number" step="1" register={register} errors={errors} />
-            <TField name="trade_make" label="Trade make" register={register} errors={errors} />
-            <TField name="trade_model" label="Trade model" register={register} errors={errors} />
-            <TField name="trade_vin" label="Trade VIN" register={register} errors={errors} />
-            <TField name="trade_acv" label="ACV" type="number" step="0.01" register={register} errors={errors} />
-            <TField name="trade_allowance" label="Allowance" type="number" step="0.01" register={register} errors={errors} />
-            <TField name="trade_payoff_quoted" label="Payoff quoted" type="number" step="0.01" register={register} errors={errors} />
-            <TField name="trade_payoff_lender" label="Payoff lender" register={register} errors={errors} />
-            <DateField name="trade_payoff_sent_date" label="Payoff sent" control={control} errors={errors} />
-            <DateField name="trade_payoff_received_date" label="Payoff received" control={control} errors={errors} />
-            <div className="col-span-2">
-              <DateField name="trade_title_received_date" label="Title received" control={control} errors={errors} />
-            </div>
-          </div>
-        )}
-      </section>
-
       </fieldset>
 
-      {readOnly && deal?.pipeline_state === "unwound" && (
-        <section className="space-y-3">
-          <SectionTitle>Unwind details</SectionTitle>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label>Unwound date</Label>
-              <p className="text-sm">{deal.unwound_date ?? "—"}</p>
-            </div>
-            <div className="space-y-1">
-              <Label>Gross profit lost</Label>
-              <p className="text-sm">
-                {deal.unwind_gross_profit == null
-                  ? "—"
-                  : usd.format(Number(deal.unwind_gross_profit))}
-              </p>
-            </div>
-            <div className="col-span-2 space-y-1">
-              <Label>Reason</Label>
-              <p className="text-sm whitespace-pre-wrap">
-                {deal.unwind_reason ?? "—"}
-              </p>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {!readOnly && (
-        <Button type="submit" disabled={isSubmitting} className="mt-2">
-          {isSubmitting ? "Saving…" : deal ? "Save changes" : "Add deal"}
-        </Button>
+      {readOnly ? (
+        <SheetFooter>
+          <Button
+            type="button"
+            variant="secondary"
+            className="ml-auto"
+            onClick={onCancel}
+          >
+            Close
+          </Button>
+        </SheetFooter>
+      ) : (
+        <SheetFooter>
+          <Button type="button" variant="secondary" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={isSubmitting} className="ml-auto">
+            {isSubmitting ? "Saving…" : deal ? "Save changes" : "Add deal"}
+          </Button>
+        </SheetFooter>
       )}
     </form>
   )

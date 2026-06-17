@@ -3,9 +3,8 @@
 import { useState } from "react"
 import { signIn } from "@/lib/auth/actions"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+import { Field } from "@/components/ui/form-section"
 
 export default function SignInPage() {
   const [error, setError] = useState<string | null>(null)
@@ -22,36 +21,45 @@ export default function SignInPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle className="text-xl">Sign in to FundDesk</CardTitle>
-        </CardHeader>
-        <CardContent>
+    <div className="flex min-h-screen items-center justify-center bg-canvas px-4">
+      <div className="w-full max-w-sm">
+        <div className="mb-6 flex items-baseline justify-between">
+          <span className="font-sans text-lg leading-none font-extrabold tracking-[-0.035em] text-fg-primary">
+            FundDesk
+          </span>
+          <span className="font-mono text-[10px] uppercase tracking-widest text-fg-tertiary">
+            sign in
+          </span>
+        </div>
+
+        <div className="rounded-lg border border-line bg-surface p-6">
           <form action={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+            <Field label="email" htmlFor="email">
               <Input id="email" name="email" type="email" autoComplete="email" required />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input id="password" name="password" type="password" autoComplete="current-password" required />
-            </div>
-            {error && <p className="text-sm text-destructive">{error}</p>}
+            </Field>
+            <Field label="password" htmlFor="password">
+              <Input
+                id="password"
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                required
+              />
+            </Field>
+            {error && <p className="text-sm text-danger">{error}</p>}
             <Button type="submit" className="w-full" disabled={pending}>
               {pending ? "Signing in…" : "Sign in"}
             </Button>
           </form>
-        </CardContent>
-        <CardFooter>
-          <p className="text-sm text-muted-foreground">
-            No account?{" "}
-            <a href="/sign-up" className="underline underline-offset-4">
-              Sign up
-            </a>
-          </p>
-        </CardFooter>
-      </Card>
+        </div>
+
+        <p className="mt-4 text-center text-sm text-fg-tertiary">
+          No account?{" "}
+          <a href="/sign-up" className="text-gold underline-offset-4 hover:underline">
+            Sign up
+          </a>
+        </p>
+      </div>
     </div>
   )
 }
