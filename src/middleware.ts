@@ -4,6 +4,13 @@ import { NextResponse, type NextRequest } from "next/server"
 const PUBLIC_ROUTES = ["/sign-in", "/sign-up"]
 
 export async function middleware(request: NextRequest) {
+  // API routes authenticate themselves (e.g. extension Bearer tokens) and must
+  // return their own JSON status codes — never a 302 HTML redirect to /sign-in.
+  // Skip the session-redirect logic for them entirely.
+  if (request.nextUrl.pathname.startsWith("/api/")) {
+    return NextResponse.next({ request })
+  }
+
   let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(

@@ -227,6 +227,8 @@ export type Deal = {
   unwound_date: string | null
   unwind_reason: string | null
   unwind_gross_profit: number | null
+  taptosign_deal_id: string | null
+  taptosign_lender_name: string | null
 }
 
 // Minimal lender shape the form needs (Select + create-time pre-fill).
@@ -251,7 +253,8 @@ export const DEAL_SELECT =
   "stips_received, has_trade, trade_year, trade_make, trade_model, trade_vin, " +
   "trade_acv, trade_allowance, trade_payoff_quoted, trade_payoff_lender, " +
   "trade_payoff_sent_date, trade_payoff_received_date, trade_title_received_date, " +
-  "unwound_date, unwind_reason, unwind_gross_profit, lender:lender_id(name, overdue_threshold_days)"
+  "unwound_date, unwind_reason, unwind_gross_profit, taptosign_deal_id, " +
+  "taptosign_lender_name, lender:lender_id(name, overdue_threshold_days)"
 
 // ── History date-range filter ────────────────────────────────────────────────
 export const RANGE_OPTIONS = [

@@ -231,7 +231,11 @@ export function DealsTable({
             const pastThreshold = threshold != null && days > threshold
             const apr = d.apr != null ? `${d.apr}%` : null
             const term = d.term_months != null ? `${d.term_months}mo` : null
-            const subline = [d.lender?.name ?? "—", apr, term].filter(Boolean).join(" · ")
+            const meta = [apr, term].filter(Boolean).join(" · ")
+            const lenderUnmapped = !d.lender_id
+            const unmappedLabel =
+              "— lender unmapped" +
+              (d.taptosign_lender_name ? ` · ${d.taptosign_lender_name}` : "")
             const blocks = activeBlockCount(d)
             return (
               <div
@@ -246,7 +250,12 @@ export function DealsTable({
                     {fullName(d)} · {vehicle(d)}
                   </div>
                   <div className="truncate font-mono text-[10px] lowercase text-fg-tertiary">
-                    {subline}
+                    {lenderUnmapped ? (
+                      <span className="text-fg-muted italic">{unmappedLabel}</span>
+                    ) : (
+                      d.lender?.name
+                    )}
+                    {meta ? ` · ${meta}` : ""}
                   </div>
                 </div>
                 <div className="text-right font-mono text-sm font-bold text-fg-primary">

@@ -1,10 +1,12 @@
 "use client"
 
+import Link from "next/link"
 import { signOut } from "@/lib/auth/actions"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 
@@ -21,6 +23,10 @@ export function UserMenu({
         {initials} · {dealership}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" sideOffset={8}>
+        <DropdownMenuItem render={<Link href="/settings/extensions" />}>
+          Settings
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => signOut()}>Sign out</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

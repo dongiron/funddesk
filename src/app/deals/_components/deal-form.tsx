@@ -309,7 +309,16 @@ export function DealForm({
 
           {/* 03 — Financial (lender + numbers) */}
           <FormSection index="03" title="financial">
-            <Field label="lender" htmlFor="lender_id" error={errors.lender_id?.message}>
+            <Field
+              label="lender"
+              htmlFor="lender_id"
+              error={errors.lender_id?.message}
+              hint={
+                deal && !deal.lender_id
+                  ? "Synced without a matched lender — pick one."
+                  : undefined
+              }
+            >
               {readOnly ? (
                 <p className="text-sm text-fg-primary">{deal?.lender?.name ?? "—"}</p>
               ) : (
@@ -324,10 +333,17 @@ export function DealForm({
                       <SelectTrigger id="lender_id" className="w-full">
                         {/* base-ui SelectValue shows the raw value (UUID) unless
                             given a function to map it to a label. */}
-                        <SelectValue placeholder="Select a lender">
+                        <SelectValue
+                          placeholder={
+                            deal && !deal.lender_id ? "— unmapped" : "Select a lender"
+                          }
+                        >
                           {(value) => {
                             const id = value as string | null
-                            if (!id) return "Select a lender"
+                            if (!id)
+                              return deal && !deal.lender_id
+                                ? "— unmapped"
+                                : "Select a lender"
                             return (
                               lenders.find((l) => l.id === id)?.name ??
                               // Fallback for a soft-deleted lender not in the
