@@ -11,6 +11,15 @@
 - Protected dashboard route at /dashboard (placeholder UI)
 - Session middleware refreshing auth on every request
 
+## TaptoSign Extension Integration
+- **Slice 1 — extension plumbing (FundDesk side): COMPLETE.** Per-user API tokens (SHA-256 hashed, shown once) managed at `/settings/extensions`; `POST /api/extensions/taptosign/sync` (service-role client + explicit `dealership_id` filter on every query) upserting deals by `(dealership_id, taptosign_deal_id)`; case-insensitive lender-name matching; null-lender UI handling. Migration `20260618000000` added `extension_tokens`, `deals.taptosign_deal_id`, nullable `deals.lender_id`, and `deals.taptosign_lender_name`.
+- **Slice 2 — TaptoSign Chrome extension: COMPLETE.** MV3 extension in `extension/` (separate toolchain, Vite + @crxjs; excluded from the Next.js build). Pivoted to **MAIN-world script injection**: the popup triggers `chrome.scripting.executeScript({ world: "MAIN" })` on a user gesture (popup open) and reads TaptoSign's internal `window.pdfSignData` directly — no declared `content_scripts`, no declared host permission for taptosign.com (`activeTab` + gesture handles access). `GET /api/extensions/taptosign/health` added for token verification. Field map covers customer, vehicle, finance, lender, signing status, and sales team, with fallback chains for fields that have multiple TaptoSign candidates.
+
+### Deferred from Slice 2
+- **Follow-up migration — add columns to `deals`:** `customer_email`, `vehicle_mileage`, `sale_price`, `down_payment`, `sales_person_name`, `finance_manager_name`, `signed_at`, `co_buyer_name`, `co_buyer_email`, `co_buyer_signed`. These are already scraped and accepted as optional by the sync endpoint's Zod schema, but not persisted (no column yet) — they're silently dropped until the migration lands.
+- **Null-skip-on-update upsert logic.** The sync upsert currently overwrites mapped columns with `null` when a field is absent from a partial sync. Add null-skip so a later partial sync (or an early-stage deal) can't wipe data a fuller earlier sync — or the operator — already set.
+- **Field-mapping iteration from real-world TaptoSign deals.** Refine `scrapeFromMainWorld` fallback priority order, date parsing (`saleDate` format isn't pinned by TaptoSign), and lender-name normalization based on observed real deal pages.
+
 ## Not Yet Built
 - Lender list UI (read/create/edit)
 - Deal list / board UI
@@ -24,10 +33,16 @@
 
 ## Parked Items
 - `unwind_gross_profit`: relax the `>= 0` CHECK to allow negatives, change semantics to **positive = recovered / negative = additional loss**. Requires a migration + updating the unwind dialog label/validation. Parked during the design overhaul (commit 3) — the field stays non-negative ("gross profit lost") for now.
+- **MoveMetal-gap items (deferred until after Slice 3):**
+  - Stip expiration tracking
+  - Document storage
+  - Audit log wiring
+  - Document status nuance
+  - AI document parsing
+  - Compliance positioning
 
-## Next Session Plan
-1. Migration 0004: extend `lenders` with typical_days_to_fund, overdue_threshold_days, ghost_patterns notes
-2. Build lender list UI as first real feature page
+## Next
+**Slice 3 — RouteOne extension.** Bring lender funding-pipeline visibility into FundDesk by scraping RouteOne deal pages, response statuses, and stipulations. Goal: surface where each deal sits with the lender (submitted / approved / conditioned / funded) and the outstanding stipulations, so the operator doesn't have to check RouteOne manually.
 
 ## Future Premium Features (Not in Phase One)
 
