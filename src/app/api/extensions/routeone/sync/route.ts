@@ -21,6 +21,7 @@ import { z } from "zod"
 import { validateExtensionToken } from "@/lib/extension-tokens"
 import { createServiceRoleClient } from "@/lib/supabase/service"
 import { matchLenderByName, type LenderRow } from "@/lib/lender-match"
+import { setIfPresent } from "@/lib/sync-helpers"
 import { PIPELINE_STATES } from "@/app/deals/deal-schema"
 
 const contractSchema = z.object({
@@ -36,6 +37,7 @@ const contractSchema = z.object({
   netProceeds: z.number().nullable().optional(),
   isDspOriginated: z.boolean().optional().default(false),
   transactionType: z.string().nullable().optional(),
+  fundingAgeDays: z.number().nullable().optional(),
 })
 
 const syncSchema = z.object({ contracts: z.array(contractSchema).min(1) })
@@ -220,23 +222,27 @@ export async function POST(request: Request) {
       if (r.matched) matchedLenderId = r.lenderId
     }
 
+    // Always-write fields: the match key, the two NOT NULL booleans, and the
+    // sync timestamp. Everything else is null-skip so a partial re-sync doesn't
+    // clobber existing data.
     const update: Record<string, unknown> = {
       routeone_deal_id: c.routeoneDealId,
-      routeone_contract_number: c.contractNumber ?? null,
-      routeone_funding_lender_name: rawLender,
-      routeone_funding_status: c.fundingStatus ?? null,
       routeone_has_unread_message: c.hasUnreadMessage,
-      routeone_amount_financed: c.amountFinanced ?? null,
-      routeone_reserve_amount: c.reserveAmount ?? null,
-      routeone_net_proceeds: c.netProceeds ?? null,
-      routeone_contract_date: toContractDate(c.contractDate),
       routeone_is_dsp_originated: c.isDspOriginated,
       routeone_last_synced_at: new Date().toISOString(),
     }
-    if (matchedLenderId) update.lender_id = matchedLenderId
+    setIfPresent(update, "routeone_contract_number", c.contractNumber)
+    setIfPresent(update, "routeone_funding_lender_name", rawLender)
+    setIfPresent(update, "routeone_funding_status", c.fundingStatus)
+    setIfPresent(update, "routeone_amount_financed", c.amountFinanced)
+    setIfPresent(update, "routeone_reserve_amount", c.reserveAmount)
+    setIfPresent(update, "routeone_net_proceeds", c.netProceeds)
+    setIfPresent(update, "routeone_contract_date", toContractDate(c.contractDate))
+    setIfPresent(update, "routeone_funding_age_days", c.fundingAgeDays)
 
-    // Canonical fields: RouteOne is authoritative for the funded amount, and its
-    // status advances the pipeline (advance-only — see nextPipelineFromRouteone).
+    // Canonical fields (authoritative — intentionally NOT null-skip, from 3.2.2):
+    // RouteOne owns the funded amount, the funding lender, and pipeline advance.
+    if (matchedLenderId) update.lender_id = matchedLenderId
     if (c.amountFinanced != null) update.amount_financed = c.amountFinanced
     const nextState = c.fundingStatus
       ? nextPipelineFromRouteone(currentPipeline, c.fundingStatus)

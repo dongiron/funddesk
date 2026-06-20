@@ -16,6 +16,7 @@ import { z } from "zod"
 import { validateExtensionToken } from "@/lib/extension-tokens"
 import { createServiceRoleClient } from "@/lib/supabase/service"
 import { matchLenderByName, type LenderRow } from "@/lib/lender-match"
+import { setIfPresent } from "@/lib/sync-helpers"
 import { phoenixToday } from "@/app/deals/deal-schema"
 
 // States from which a freshly-signed deal advances to "ready_to_send". A deal
@@ -66,6 +67,9 @@ const syncSchema = z.object({
       term: z.number().optional(),
       monthlyPayment: z.number().optional(),
       lenderName: z.string().optional(),
+      frontGross: z.number().nullable().optional(),
+      backGross: z.number().nullable().optional(),
+      totalGross: z.number().nullable().optional(),
     })
     .optional()
     .default({}),
@@ -97,6 +101,15 @@ function toSoldDate(saleDate: string | undefined): string {
     if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10)
   }
   return phoenixToday()
+}
+
+// TaptoSign's BuyerSignedDate format isn't pinned; normalize to ISO so a
+// malformed value is skipped (returns undefined) rather than 500-ing the write
+// when Postgres rejects it as a TIMESTAMPTZ.
+function toTimestamp(v: string | undefined): string | undefined {
+  if (!v) return undefined
+  const d = new Date(v)
+  return Number.isNaN(d.getTime()) ? undefined : d.toISOString()
 }
 
 export async function POST(request: Request) {
@@ -152,25 +165,38 @@ export async function POST(request: Request) {
 
   const year = body.vehicle.year ? Number.parseInt(body.vehicle.year, 10) : NaN
 
-  // Fields written on both create and update. Accepted by the schema but NOT yet
-  // persisted (no column): customer.email, coBuyer.*, vehicle.miles,
-  // finance.salePrice/downPayment, sales.*, signedAt. A follow-up migration adds
-  // those columns.
-  const mapped = {
-    customer_first_name: body.customer.firstName ?? null,
-    customer_last_name: body.customer.lastName ?? null,
-    vehicle_year: Number.isNaN(year) ? null : year,
-    vehicle_make: body.vehicle.make ?? null,
-    vehicle_model: body.vehicle.model ?? null,
-    vehicle_vin: body.vehicle.vin ?? null,
-    stock_number: body.vehicle.stockNumber ?? null,
-    amount_financed: body.finance.amountFinanced ?? null,
-    apr: body.finance.apr ?? null,
-    term_months: body.finance.term ?? null,
-    monthly_payment: body.finance.monthlyPayment ?? null,
-    lender_id: lenderId,
-    taptosign_lender_name: lenderMapped ? null : (rawLenderName ?? null),
-  }
+  // Null-skip every data field: a partial re-sync must not clobber an existing
+  // non-null DB value (incl. a manually-set or RouteOne-set lender_id) with null
+  // from a missing payload field. taptosign_lender_name is written unconditionally
+  // so a newly-matched lender clears stale raw text; co_buyer_signed is NOT NULL.
+  const mapped: Record<string, unknown> = {}
+  setIfPresent(mapped, "customer_first_name", body.customer.firstName)
+  setIfPresent(mapped, "customer_last_name", body.customer.lastName)
+  setIfPresent(mapped, "vehicle_year", Number.isNaN(year) ? null : year)
+  setIfPresent(mapped, "vehicle_make", body.vehicle.make)
+  setIfPresent(mapped, "vehicle_model", body.vehicle.model)
+  setIfPresent(mapped, "vehicle_vin", body.vehicle.vin)
+  setIfPresent(mapped, "stock_number", body.vehicle.stockNumber)
+  setIfPresent(mapped, "amount_financed", body.finance.amountFinanced)
+  setIfPresent(mapped, "apr", body.finance.apr)
+  setIfPresent(mapped, "term_months", body.finance.term)
+  setIfPresent(mapped, "monthly_payment", body.finance.monthlyPayment)
+  setIfPresent(mapped, "customer_email", body.customer.email)
+  setIfPresent(mapped, "vehicle_mileage", body.vehicle.miles)
+  setIfPresent(mapped, "sale_price", body.finance.salePrice)
+  setIfPresent(mapped, "down_payment", body.finance.downPayment)
+  setIfPresent(mapped, "sales_person_name", body.sales?.salesPersonName)
+  setIfPresent(mapped, "finance_manager_name", body.sales?.financeManagerName)
+  setIfPresent(mapped, "signed_at", toTimestamp(body.signedAt))
+  setIfPresent(mapped, "co_buyer_name", body.coBuyer?.name)
+  setIfPresent(mapped, "co_buyer_email", body.coBuyer?.email)
+  setIfPresent(mapped, "front_gross", body.finance.frontGross)
+  setIfPresent(mapped, "back_gross", body.finance.backGross)
+  setIfPresent(mapped, "total_gross", body.finance.totalGross)
+  // lender_id: set only on a catalog match, never null (D-lenderoverwrite).
+  setIfPresent(mapped, "lender_id", lenderId)
+  mapped.taptosign_lender_name = lenderMapped ? null : (rawLenderName ?? null)
+  if (body.coBuyer?.signed !== undefined) mapped.co_buyer_signed = body.coBuyer.signed
 
   if (existing) {
     const pipeline_state = nextPipelineState(

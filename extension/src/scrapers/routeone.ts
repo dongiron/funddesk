@@ -36,6 +36,10 @@ function scrapeContractManager(): { contracts: unknown[] } | null {
     const routeoneDealId = link ? param(link.getAttribute("href") ?? "", "creditAppOID") : null
     if (!routeoneDealId) continue // required — skip rows without it
     const lenderCell = cells[4]
+    // Cell 6 (0-based [5]): funding age in days. parseInt is lenient ("5 days"
+    // → 5); non-numeric → null.
+    const ageRaw = parseInt((cells[5].textContent ?? "").trim(), 10)
+    const fundingAgeDays = Number.isFinite(ageRaw) ? ageRaw : null
     contracts.push({
       routeoneDealId,
       contractNumber: txt(cells[1]),
@@ -49,6 +53,7 @@ function scrapeContractManager(): { contracts: unknown[] } | null {
       netProceeds: money(cells[8]),
       isDspOriginated: !!customerCell.querySelector('img[alt="from Dsp"]'),
       transactionType: txt(cells[10]),
+      fundingAgeDays,
     })
   }
   return contracts.length > 0 ? { contracts } : null

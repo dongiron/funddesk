@@ -23,6 +23,9 @@ export type TaptosignDealPayload = {
     term?: number
     monthlyPayment?: number
     lenderName?: string
+    frontGross?: number | null
+    backGross?: number | null
+    totalGross?: number | null
   }
   sales?: { salesPersonName?: string; financeManagerName?: string }
   signed: boolean
@@ -46,6 +49,7 @@ export type RouteoneContract = {
   netProceeds?: number | null
   isDspOriginated: boolean
   transactionType?: string | null
+  fundingAgeDays?: number | null
 }
 export type RouteoneSyncPayload = { contracts: RouteoneContract[] }
 

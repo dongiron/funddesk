@@ -24,6 +24,9 @@ export type RawTaptosignScrape = {
   salesPersonName: string | null
   financeManagerName: string | null
   lenderName: string | null
+  frontGross: string | number | null
+  backGross: string | number | null
+  totalGross: string | number | null
   signed: boolean
   signedDate: string | null
   isCoBuyerSigned: boolean
@@ -58,6 +61,9 @@ function scrapeFromMainWorld() {
     salesPersonName: data.SalesPersonName ?? data.Salesman ?? null,
     financeManagerName: data.FinanceManagerName ?? null,
     lenderName: data.AssignToLender ?? null,
+    frontGross: data.FrontGrossAmount ?? null,
+    backGross: data.BackendGrossAmount ?? null,
+    totalGross: data.TotalGrossAmount ?? data.DealerGrossAmount ?? null,
     signed:
       data.IsBuyerSigned === true ||
       data.IsBuyerSigned === "true" ||
@@ -141,6 +147,9 @@ export function mapScrape(raw: RawTaptosignScrape | null): TaptosignDealPayload 
       term: toNum(raw.term),
       monthlyPayment: toNum(raw.monthlyPayment),
       lenderName: str(raw.lenderName),
+      frontGross: toNum(raw.frontGross),
+      backGross: toNum(raw.backGross),
+      totalGross: toNum(raw.totalGross),
     },
     sales: hasSales
       ? { salesPersonName: str(raw.salesPersonName), financeManagerName: str(raw.financeManagerName) }
