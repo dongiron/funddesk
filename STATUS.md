@@ -40,6 +40,12 @@
   - Document status nuance
   - AI document parsing
   - Compliance positioning
+- **TaptoSign PDF extraction (Slice 3.7) — deploy/prod follow-ups:**
+  - **Vercel production body limit** — the ~4.5MB serverless function request cap will reject ~10MB base64 PDFs in prod (works on localhost/dev). Resolve before deploy: `vercel.json` config bump, Supabase Storage staging, or the Anthropic Files API upload path.
+  - **`ANTHROPIC_API_KEY` missing in Vercel env** — add when deploying (only in local `.env.local` today).
+  - **`proxy.ts` middleware deprecation** — Next 16 warns on the `middleware.ts` convention; rename `src/middleware.ts` → `src/proxy.ts` (cosmetic, not blocking).
+  - **PDF hash caching** — a re-synced deal re-extracts and re-bills the Anthropic call; add a cache key on the PDF hash to skip unchanged PDFs (deferred per the Slice 3.7 plan).
+  - **`PdfUrlCompressed` empty on signed deals** — TaptoSign reality, not a bug; the `Base64Pdf → PdfUrlCompressed → SignedPdf → PdfUrl` priority chain falls through correctly.
 
 ## Next
 **Slice 3 — RouteOne extension.** Bring lender funding-pipeline visibility into FundDesk by scraping RouteOne deal pages, response statuses, and stipulations. Goal: surface where each deal sits with the lender (submitted / approved / conditioned / funded) and the outstanding stipulations, so the operator doesn't have to check RouteOne manually.

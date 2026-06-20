@@ -1,5 +1,6 @@
 import { clearToken, getSettings, setSettings } from "../lib/storage"
 import type {
+  PdfExtractResult,
   RouteoneSyncPayload,
   RouteoneSyncResult,
   Settings,
@@ -7,7 +8,12 @@ import type {
   TaptosignDealPayload,
   TestResult,
 } from "../shared/types"
-import { getScrapedDeal, mapScrape } from "../scrapers/taptosign"
+import {
+  getPdfBase64,
+  getScrapedDeal,
+  mapScrape,
+  type RawTaptosignScrape,
+} from "../scrapers/taptosign"
 import { getRouteoneScrape } from "../scrapers/routeone"
 
 const app = document.getElementById("app") as HTMLElement
@@ -151,7 +157,7 @@ function renderConnected(message: string) {
 }
 
 // ── State 3 — on a deal page ──────────────────────────────────────────────────
-function renderDeal(p: TaptosignDealPayload) {
+function renderDeal(p: TaptosignDealPayload, raw: RawTaptosignScrape) {
   const customerName =
     [p.customer.firstName, p.customer.lastName].filter(Boolean).join(" ").trim() || "—"
   const coBuyer = p.coBuyer?.name?.trim()
@@ -192,21 +198,44 @@ function renderDeal(p: TaptosignDealPayload) {
     syncBtn.textContent = "Syncing…"
     resultEl.innerHTML = ""
 
+    // Stage 1 — basic field sync from pdfSignData.
     const result = (await chrome.runtime.sendMessage({
       type: "SYNC_DEAL",
       payload: p,
     })) as SyncResult
 
-    if (result.ok) {
-      const lenderNote = result.lenderMapped ? "" : " · lender unmapped"
-      resultEl.innerHTML = `<p class="ok">Synced ✓ (${result.action}${lenderNote})</p>`
-      syncBtn.textContent = "Synced"
-      setTimeout(() => window.close(), 2000)
-    } else {
+    if (!result.ok) {
       resultEl.innerHTML = `<p class="error">${esc(result.error)}</p>`
       syncBtn.textContent = "Sync to FundDesk"
       syncBtn.disabled = false
+      return
     }
+
+    const lenderNote = result.lenderMapped ? "" : " · lender unmapped"
+    resultEl.innerHTML = `<p class="ok">Synced ✓ (${result.action}${lenderNote})</p>`
+    syncBtn.textContent = "Synced"
+
+    // Stage 2 — AI contract extraction from the signed PDF. Best-effort: a
+    // failure here never undoes the stage-1 sync that already landed.
+    const pdfBase64 = await getPdfBase64(raw)
+    if (!pdfBase64) {
+      setTimeout(() => window.close(), 2000)
+      return
+    }
+
+    resultEl.innerHTML += `<p class="muted extracting">Extracting contract data…</p>`
+    const extract = (await chrome.runtime.sendMessage({
+      type: "SYNC_PDF_EXTRACT",
+      payload: { taptosignDealId: p.taptosignDealId, pdfBase64 },
+    })) as PdfExtractResult
+
+    if (extract.ok) {
+      const fld = `${extract.fieldsUpdated} field${extract.fieldsUpdated === 1 ? "" : "s"}`
+      resultEl.innerHTML = `<p class="ok">Synced ✓ · contract data extracted (${fld} updated)</p>`
+    } else {
+      resultEl.innerHTML = `<p class="ok">Synced ✓</p><p class="error">contract extraction failed: ${esc(extract.error)}</p>`
+    }
+    setTimeout(() => window.close(), 3000)
   })
 }
 
@@ -283,8 +312,9 @@ async function render() {
 
   const site = await detectSite()
   if (site === "taptosign") {
-    const payload = mapScrape(await getScrapedDeal())
-    if (payload) renderDeal(payload)
+    const raw = await getScrapedDeal()
+    const payload = mapScrape(raw)
+    if (payload && raw) renderDeal(payload, raw)
     else renderConnected("Open a TaptoSign deal page to sync.")
   } else if (site === "routeone") {
     const batch = await getRouteoneScrape()

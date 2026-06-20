@@ -30,6 +30,10 @@ export type RawTaptosignScrape = {
   signed: boolean
   signedDate: string | null
   isCoBuyerSigned: boolean
+  pdfBase64: string | null
+  pdfUrlCompressed: string | null
+  signedPdf: string | null
+  pdfUrl: string | null
 }
 
 // ── MAIN-world scrape ─────────────────────────────────────────────────────────
@@ -70,6 +74,10 @@ function scrapeFromMainWorld() {
       Boolean(data.BuyerSignedDate),
     signedDate: data.BuyerSignedDate ?? data.DealCompletedDate ?? null,
     isCoBuyerSigned: data.IsCoBuyerSigned === true || Boolean(data.CoBuyerSignedDate),
+    pdfBase64: data.Base64Pdf ?? null,
+    pdfUrlCompressed: data.PdfUrlCompressed ?? null,
+    signedPdf: data.SignedPdf ?? null,
+    pdfUrl: data.PdfUrl ?? null,
   }
 }
 
@@ -90,6 +98,57 @@ export async function getScrapedDeal(): Promise<RawTaptosignScrape | null> {
       func: scrapeFromMainWorld,
     })
     return (results?.[0]?.result as RawTaptosignScrape | null) ?? null
+  } catch {
+    return null
+  }
+}
+
+// ── Signed-contract PDF (for the second-stage extract) ────────────────────────
+// Injected into the page to fetch the contract same-origin (so TaptoSign's
+// session cookies apply) and return base64 — the popup's own origin can't reach
+// the CDN. SignedPdf / PdfUrl are relative paths, so the absolute URL is built
+// against the page origin and encodeURI'd (signed filenames contain spaces/colons).
+function fetchPdfAsBase64(rawPath: string): Promise<string | null> {
+  const base = rawPath.startsWith("/") ? window.location.origin + rawPath : rawPath
+  const url = encodeURI(base)
+  return fetch(url, { credentials: "include" })
+    .then((r) => (r.ok ? r.blob() : null))
+    .then(
+      (blob) =>
+        new Promise<string | null>((resolve) => {
+          if (!blob) return resolve(null)
+          const reader = new FileReader()
+          reader.onloadend = () => {
+            const result = reader.result
+            if (typeof result !== "string") return resolve(null)
+            const comma = result.indexOf(",") // strip "data:...;base64,"
+            resolve(comma >= 0 ? result.slice(comma + 1) : null)
+          }
+          reader.onerror = () => resolve(null)
+          reader.readAsDataURL(blob)
+        })
+    )
+    .catch(() => null)
+}
+
+// Returns the contract PDF as base64. Priority: embedded Base64Pdf (free, but ""
+// on signed deals), then PdfUrlCompressed (smallest, often unpopulated), then
+// SignedPdf (the actual signed contract — preferred for parity with what the
+// dealer submitted), then PdfUrl (unsigned template, slightly larger). The three
+// path candidates are fetched in page context. null when no source is available.
+export async function getPdfBase64(raw: RawTaptosignScrape): Promise<string | null> {
+  if (raw.pdfBase64) return raw.pdfBase64
+  const path = raw.pdfUrlCompressed || raw.signedPdf || raw.pdfUrl
+  if (!path) return null
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+    if (!tab?.id) return null
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: fetchPdfAsBase64,
+      args: [path],
+    })
+    return (results?.[0]?.result as string | null) ?? null
   } catch {
     return null
   }

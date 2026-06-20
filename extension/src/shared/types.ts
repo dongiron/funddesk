@@ -82,13 +82,21 @@ export type SyncResult =
 
 export type TestResult = { ok: true } | { ok: false; error: string; status: number }
 
+// ── TaptoSign PDF extraction (second-stage sync) ──────────────────────────────
+export type PdfExtractPayload = { taptosignDealId: string; pdfBase64: string }
+export type PdfExtractResult =
+  | { ok: true; fieldsUpdated: number; extracted: Record<string, unknown> }
+  | { ok: false; error: string; status: number }
+
 // ── Message envelopes (popup → background) ────────────────────────────────────
 export type SyncDealMessage = { type: "SYNC_DEAL"; payload: TaptosignDealPayload }
 export type SyncRouteoneMessage = { type: "SYNC_ROUTEONE"; payload: RouteoneSyncPayload }
+export type SyncPdfExtractMessage = { type: "SYNC_PDF_EXTRACT"; payload: PdfExtractPayload }
 export type TestConnectionMessage = { type: "TEST_CONNECTION" }
 export type BackgroundMessage =
   | SyncDealMessage
   | SyncRouteoneMessage
+  | SyncPdfExtractMessage
   | TestConnectionMessage
 
 export type Settings = { token?: string; serverUrl: string }
