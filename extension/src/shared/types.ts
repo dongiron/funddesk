@@ -30,9 +30,46 @@ export type TaptosignDealPayload = {
   saleDate?: string
 }
 
-// Stub wire shape for the RouteOne batch sync (Slice 3.2 fills the contract
-// shape). RawTaptosignScrape now lives with its scraper in scrapers/taptosign.ts.
-export type RouteoneSyncPayload = { contracts: never[] }
+// RouteOne Contract Manager batch sync. Mirrors the Zod schema in
+// src/app/api/extensions/routeone/sync/route.ts. Only routeoneDealId is
+// required; missing cells come through as null (never 0 or "").
+export type RouteoneContract = {
+  routeoneDealId: string
+  contractNumber?: string | null
+  contractDate?: string | null // YYYY-MM-DD
+  customerName?: string | null // "LastName, FirstName"
+  fundingLenderName?: string | null
+  fundingStatus?: string | null
+  hasUnreadMessage: boolean
+  amountFinanced?: number | null
+  reserveAmount?: number | null
+  netProceeds?: number | null
+  isDspOriginated: boolean
+  transactionType?: string | null
+}
+export type RouteoneSyncPayload = { contracts: RouteoneContract[] }
+
+export type RouteoneUnmatchedRow = {
+  customerName: string | null
+  routeoneDealId: string
+  lenderName: string | null
+  status: string | null
+}
+export type RouteoneErroredRow = {
+  routeoneDealId: string
+  customerName: string | null
+  error: string
+}
+export type RouteoneSyncResult =
+  | {
+      ok: true
+      matched: number
+      unmatched: number
+      unmatchedRows: RouteoneUnmatchedRow[]
+      errored: number
+      erroredRows: RouteoneErroredRow[]
+    }
+  | { ok: false; error: string; status: number }
 
 // ── API results (background worker → popup) ───────────────────────────────────
 export type SyncResult =

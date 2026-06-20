@@ -1,5 +1,12 @@
 import { clearToken, getSettings, setSettings } from "../lib/storage"
-import type { Settings, SyncResult, TaptosignDealPayload, TestResult } from "../shared/types"
+import type {
+  RouteoneSyncPayload,
+  RouteoneSyncResult,
+  Settings,
+  SyncResult,
+  TaptosignDealPayload,
+  TestResult,
+} from "../shared/types"
 import { getScrapedDeal, mapScrape } from "../scrapers/taptosign"
 import { getRouteoneScrape } from "../scrapers/routeone"
 
@@ -203,6 +210,69 @@ function renderDeal(p: TaptosignDealPayload) {
   })
 }
 
+// ── State 3 (RouteOne) — Contract Manager batch ───────────────────────────────
+function renderRouteoneBatch(payload: RouteoneSyncPayload) {
+  const n = payload.contracts.length
+  const plural = n === 1 ? "" : "s"
+  const preview = payload.contracts
+    .slice(0, 5)
+    .map((c) => {
+      const name = c.customerName?.trim() || "—"
+      const lender = c.fundingLenderName?.trim() || "—"
+      const status = c.fundingStatus?.trim() || "—"
+      return `<div class="r1-row"><span class="r1-name">${esc(name)}</span><span class="pv-sub mono">${esc(lender)} · ${esc(status)}</span></div>`
+    })
+    .join("")
+  const more = n > 5 ? `<div class="pv-sub muted">+${n - 5} more</div>` : ""
+
+  app.innerHTML = `
+    ${header(`${n} contract${plural}`)}
+    <div class="r1-title">${n} contract${plural} in funding</div>
+    <div class="preview">${preview}${more}</div>
+    <button id="sync" class="btn-gold btn-full">Sync to FundDesk</button>
+    <div id="result"></div>
+    ${settingsLink()}
+  `
+  wireSettingsLink()
+
+  const syncBtn = document.getElementById("sync") as HTMLButtonElement
+  const resultEl = document.getElementById("result") as HTMLElement
+
+  syncBtn.addEventListener("click", async () => {
+    syncBtn.disabled = true
+    syncBtn.textContent = "Syncing…"
+    resultEl.innerHTML = ""
+
+    const result = (await chrome.runtime.sendMessage({
+      type: "SYNC_ROUTEONE",
+      payload,
+    })) as RouteoneSyncResult
+
+    if (result.ok) {
+      let html = `<p class="ok">${result.matched} synced ✓ · ${result.unmatched} unmatched · ${result.errored} errored</p>`
+      if (result.unmatched > 0) {
+        const items = result.unmatchedRows
+          .map((r) => `<li>${esc(r.customerName ?? "—")} <span class="mono muted">#${esc(r.routeoneDealId)}</span></li>`)
+          .join("")
+        html += `<details class="r1-list"><summary>${result.unmatched} unmatched</summary><ul>${items}</ul></details>`
+      }
+      if (result.errored > 0) {
+        const items = result.erroredRows
+          .map((r) => `<li>${esc(r.customerName ?? "—")} <span class="mono muted">#${esc(r.routeoneDealId)}</span><span class="error"> ${esc(r.error)}</span></li>`)
+          .join("")
+        html += `<details class="r1-list"><summary>${result.errored} errored</summary><ul>${items}</ul></details>`
+      }
+      resultEl.innerHTML = html
+      syncBtn.textContent = "Synced"
+      setTimeout(() => window.close(), 3000)
+    } else {
+      resultEl.innerHTML = `<p class="error">${esc(result.error)}</p>`
+      syncBtn.textContent = "Sync to FundDesk"
+      syncBtn.disabled = false
+    }
+  })
+}
+
 // ── Boot ──────────────────────────────────────────────────────────────────────
 async function render() {
   const settings = await getSettings()
@@ -217,13 +287,9 @@ async function render() {
     if (payload) renderDeal(payload)
     else renderConnected("Open a TaptoSign deal page to sync.")
   } else if (site === "routeone") {
-    const routeone = await getRouteoneScrape() // stubbed → null until Slice 3.2
-    if (routeone) {
-      // Slice 3.2 will render a RouteOne preview here.
-      renderConnected("RouteOne sync arrives in the next update.")
-    } else {
-      renderConnected("RouteOne sync arrives in the next update.")
-    }
+    const batch = await getRouteoneScrape()
+    if (batch && batch.contracts.length > 0) renderRouteoneBatch(batch)
+    else renderConnected("Open RouteOne Contract Manager to sync.")
   } else {
     renderConnected("Open a TaptoSign deal page to sync.")
   }

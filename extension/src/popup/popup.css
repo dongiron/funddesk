@@ -244,3 +244,43 @@ button {
 .badge.muted {
   color: var(--fg-tertiary);
 }
+
+/* RouteOne batch (State 3 — multi-contract) */
+.muted {
+  color: var(--fg-muted);
+}
+.r1-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-primary);
+}
+.r1-row {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--line);
+}
+.r1-row:last-child {
+  border-bottom: none;
+}
+.r1-name {
+  font-size: 12px;
+  color: var(--fg-primary);
+}
+.r1-list {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--fg-secondary);
+}
+.r1-list summary {
+  cursor: pointer;
+  color: var(--fg-tertiary);
+}
+.r1-list ul {
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+.r1-list li {
+  margin: 2px 0;
+}

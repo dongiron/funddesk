@@ -1,6 +1,9 @@
 import { getSettings } from "./storage"
 import type {
   RouteoneSyncPayload,
+  RouteoneSyncResult,
+  RouteoneUnmatchedRow,
+  RouteoneErroredRow,
   SyncResult,
   TaptosignDealPayload,
   TestResult,
@@ -65,13 +68,46 @@ export async function syncDeal(
   return { ok: false, error: describeStatus(res.status), status: res.status }
 }
 
-// Stub — wired up in Slice 3.2 (real payload + result shape land then). Posts to
-// syncUrl(serverUrl, "routeone"). Unused this slice: the worker doesn't route
-// SYNC_ROUTEONE and the popup never sends it.
 export async function syncRouteoneBatch(
-  _payload: RouteoneSyncPayload
-): Promise<SyncResult> {
-  return { ok: false, error: "RouteOne sync not implemented yet.", status: 0 }
+  payload: RouteoneSyncPayload
+): Promise<RouteoneSyncResult> {
+  const { token, serverUrl } = await getSettings()
+  if (!token) return { ok: false, error: "No token configured.", status: 0 }
+
+  let res: Response
+  try {
+    res = await fetch(syncUrl(serverUrl, "routeone"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    })
+  } catch {
+    return {
+      ok: false,
+      error: "Couldn't reach FundDesk. Check the server URL and that it's running.",
+      status: 0,
+    }
+  }
+
+  if (res.ok) {
+    try {
+      const data = (await res.json()) as {
+        matched: number
+        unmatched: number
+        unmatchedRows: RouteoneUnmatchedRow[]
+        errored: number
+        erroredRows: RouteoneErroredRow[]
+      }
+      return { ok: true, ...data }
+    } catch {
+      return { ok: false, error: "FundDesk returned an unreadable response.", status: res.status }
+    }
+  }
+
+  return { ok: false, error: describeStatus(res.status), status: res.status }
 }
 
 export async function testConnection(): Promise<TestResult> {
