@@ -3,6 +3,9 @@
 # dependencies
 /node_modules
 /.pnp
+# chrome extension (separate toolchain)
+extension/node_modules
+extension/dist
 .pnp.*
 .yarn/*
 !.yarn/patches

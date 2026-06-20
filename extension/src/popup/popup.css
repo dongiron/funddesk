@@ -1,0 +1,246 @@
+/* FundDesk dark/gold aesthetic — mirrors the web app design tokens. */
+:root {
+  --canvas: #121417;
+  --surface: #1a1d22;
+  --surface-elevated: #22262c;
+  --line: #2a2e34;
+  --line-strong: #3a3f47;
+  --fg-primary: #ececE5;
+  --fg-secondary: #9ca0a6;
+  --fg-tertiary: #5f6369;
+  --fg-muted: #4a4d52;
+  --gold: #d4a85c;
+  --gold-hover: #dfb668;
+  --danger: #e08484;
+  --success: #7fae85;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --sans: Inter, system-ui, -apple-system, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  width: 380px;
+  background: var(--canvas);
+  color: var(--fg-primary);
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.app {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Header */
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.wordmark {
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  font-size: 15px;
+}
+.tag {
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--fg-tertiary);
+}
+
+/* Fields */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.label {
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: lowercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-tertiary);
+}
+input {
+  width: 100%;
+  height: 32px;
+  padding: 4px 9px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--fg-primary);
+  font-family: var(--mono);
+  font-size: 12px;
+  outline: none;
+}
+input:focus {
+  border-color: var(--gold);
+}
+
+/* Buttons */
+button {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.12s, color 0.12s;
+}
+.btn-gold {
+  background: var(--gold);
+  color: var(--canvas);
+}
+.btn-gold:hover {
+  background: var(--gold-hover);
+}
+.btn-gold:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-secondary {
+  background: transparent;
+  border-color: var(--line);
+  color: var(--fg-secondary);
+}
+.btn-secondary:hover {
+  background: var(--surface);
+  color: var(--fg-primary);
+}
+.btn-full {
+  width: 100%;
+}
+
+/* Text + status */
+.muted {
+  color: var(--fg-secondary);
+}
+.center {
+  text-align: center;
+}
+.error {
+  color: var(--danger);
+  font-size: 12px;
+}
+.ok {
+  color: var(--success);
+}
+.link {
+  background: none;
+  border: none;
+  padding: 0;
+  height: auto;
+  color: var(--gold);
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* Deal preview */
+.preview {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.preview .pv-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.pv-key {
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: lowercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-tertiary);
+}
+.pv-val {
+  font-size: 12px;
+  text-align: right;
+  color: var(--fg-primary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pv-val.mono {
+  font-family: var(--mono);
+}
+.pv-val.empty {
+  color: var(--fg-muted);
+  font-style: italic;
+}
+
+.notice {
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  padding: 16px 12px;
+  text-align: center;
+  color: var(--fg-tertiary);
+  font-size: 12px;
+}
+
+/* Deal preview (State 3) */
+.pv-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg-primary);
+}
+.pv-co {
+  margin-left: 6px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--fg-secondary);
+}
+.pv-line {
+  font-size: 12px;
+  color: var(--fg-primary);
+}
+.pv-vin {
+  color: var(--fg-secondary);
+}
+.pv-sub {
+  font-size: 11px;
+  color: var(--fg-tertiary);
+}
+.empty {
+  color: var(--fg-muted);
+  font-style: italic;
+}
+.badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+.badge.ok {
+  color: var(--success);
+}
+.badge.muted {
+  color: var(--fg-tertiary);
+}

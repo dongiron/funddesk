@@ -25,40 +25,77 @@ const ADVANCE_FROM = new Set([
   "gathering_paperwork",
 ])
 
+// Only taptosignDealId is required. A TaptoSign deal is partial at most sync
+// moments, so everything else is optional — we land what we have and refine on a
+// later sync rather than 422-ing on missing fields.
 const syncSchema = z.object({
   taptosignDealId: z.string().min(1),
-  customer: z.object({
-    firstName: z.string().min(1),
-    lastName: z.string().min(1),
-    phone: z.string().optional(),
-    email: z.string().optional(),
-    address: z.string().optional(),
-  }),
-  vehicle: z.object({
-    vin: z.string().min(1),
-    year: z.string().min(1),
-    make: z.string().min(1),
-    model: z.string().min(1),
-    miles: z.string().optional(),
-  }),
-  finance: z
+  customer: z
     .object({
-      amountFinanced: z.number().optional(),
-      apr: z.number().optional(),
-      cashDown: z.number().optional(),
-      lenderName: z.string().optional(),
-      term: z.number().optional(),
+      firstName: z.string().optional(),
+      lastName: z.string().optional(),
+      email: z.string().optional(),
     })
     .optional()
     .default({}),
-  signed: z.boolean(),
+  coBuyer: z
+    .object({
+      name: z.string().optional(),
+      email: z.string().optional(),
+      signed: z.boolean().optional(),
+    })
+    .optional(),
+  vehicle: z
+    .object({
+      vin: z.string().optional(),
+      year: z.string().optional(),
+      make: z.string().optional(),
+      model: z.string().optional(),
+      miles: z.string().optional(),
+      stockNumber: z.string().optional(),
+    })
+    .optional()
+    .default({}),
+  finance: z
+    .object({
+      salePrice: z.number().optional(),
+      downPayment: z.number().optional(),
+      amountFinanced: z.number().optional(),
+      apr: z.number().optional(),
+      term: z.number().optional(),
+      monthlyPayment: z.number().optional(),
+      lenderName: z.string().optional(),
+    })
+    .optional()
+    .default({}),
+  sales: z
+    .object({
+      salesPersonName: z.string().optional(),
+      financeManagerName: z.string().optional(),
+    })
+    .optional(),
+  signed: z.boolean().optional().default(false),
   signedAt: z.string().optional(),
+  saleDate: z.string().optional(),
 })
 
 function nextPipelineState(current: string | null, signed: boolean): string {
   const base = current ?? "signed"
   if (signed && ADVANCE_FROM.has(base)) return "ready_to_send"
   return base
+}
+
+// saleDate from TaptoSign → a YYYY-MM-DD sold_date, else today (Phoenix). Format
+// isn't pinned by TaptoSign, so accept an ISO prefix or anything Date can parse
+// before falling back to today.
+function toSoldDate(saleDate: string | undefined): string {
+  if (saleDate) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(saleDate)
+    if (m) return `${m[1]}-${m[2]}-${m[3]}`
+    const d = new Date(saleDate)
+    if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10)
+  }
+  return phoenixToday()
 }
 
 export async function POST(request: Request) {
@@ -113,20 +150,24 @@ export async function POST(request: Request) {
     .is("deleted_at", null)
     .maybeSingle()
 
-  const year = Number.parseInt(body.vehicle.year, 10)
+  const year = body.vehicle.year ? Number.parseInt(body.vehicle.year, 10) : NaN
 
-  // Fields written on both create and update. Columns that don't exist on deals
-  // (phone/email/address, miles, cashDown, signedAt) are intentionally skipped.
+  // Fields written on both create and update. Accepted by the schema but NOT yet
+  // persisted (no column): customer.email, coBuyer.*, vehicle.miles,
+  // finance.salePrice/downPayment, sales.*, signedAt. A follow-up migration adds
+  // those columns.
   const mapped = {
-    customer_first_name: body.customer.firstName,
-    customer_last_name: body.customer.lastName,
+    customer_first_name: body.customer.firstName ?? null,
+    customer_last_name: body.customer.lastName ?? null,
     vehicle_year: Number.isNaN(year) ? null : year,
-    vehicle_make: body.vehicle.make,
-    vehicle_model: body.vehicle.model,
-    vehicle_vin: body.vehicle.vin,
+    vehicle_make: body.vehicle.make ?? null,
+    vehicle_model: body.vehicle.model ?? null,
+    vehicle_vin: body.vehicle.vin ?? null,
+    stock_number: body.vehicle.stockNumber ?? null,
     amount_financed: body.finance.amountFinanced ?? null,
     apr: body.finance.apr ?? null,
     term_months: body.finance.term ?? null,
+    monthly_payment: body.finance.monthlyPayment ?? null,
     lender_id: lenderId,
     taptosign_lender_name: lenderMapped ? null : (rawLenderName ?? null),
   }
@@ -162,7 +203,7 @@ export async function POST(request: Request) {
       dealership_id: dealershipId,
       created_by: userId,
       taptosign_deal_id: body.taptosignDealId,
-      sold_date: phoenixToday(),
+      sold_date: toSoldDate(body.saleDate),
       pipeline_state: nextPipelineState(null, body.signed),
     })
     .select("id")

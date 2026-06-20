@@ -1,0 +1,19 @@
+{
+  "name": "funddesk-extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "FundDesk Sync for TaptoSign — Chrome extension (Manifest V3)",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "type-check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "^2.7.0",
+    "@types/chrome": "^0.0.287",
+    "typescript": "^5.7.3",
+    "vite": "^8.0.16"
+  }
+}
