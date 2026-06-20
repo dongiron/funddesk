@@ -1,11 +1,7 @@
 import { clearToken, getSettings, setSettings } from "../lib/storage"
-import type {
-  RawTaptosignScrape,
-  Settings,
-  SyncResult,
-  TaptosignDealPayload,
-  TestResult,
-} from "../shared/types"
+import type { Settings, SyncResult, TaptosignDealPayload, TestResult } from "../shared/types"
+import { getScrapedDeal, mapScrape } from "../scrapers/taptosign"
+import { getRouteoneScrape } from "../scrapers/routeone"
 
 const app = document.getElementById("app") as HTMLElement
 let forceSettings = false
@@ -28,126 +24,20 @@ function wireSettingsLink() {
   })
 }
 
-// ── MAIN-world scrape ─────────────────────────────────────────────────────────
-// Injected into the page's real JS context. MUST be self-contained (no closures
-// or imports) — it is serialized by source and run in world: "MAIN".
-function scrapeFromMainWorld() {
-  // @ts-expect-error pdfSignData is injected by TaptoSign
-  const data = window.pdfSignData
-  if (!data || typeof data !== "object") return null
-  return {
-    taptosignDealId: data.Id ?? null,
-    customerName: data.BuyerName ?? data.BuyerNameOnDocument ?? null,
-    customerEmail: data.BuyerEmail ?? null,
-    coBuyerName: data.CoBuyerName ?? data.CoBuyerNameOnDocument ?? null,
-    coBuyerEmail: data.CoBuyerEmail ?? null,
-    vehicleYear: data.Year ?? null,
-    vehicleMake: data.Make ?? null,
-    vehicleModel: data.Model ?? null,
-    vehicleVin: data.Vin ?? null,
-    vehicleMileage: data.Mile ?? null,
-    stockNumber: data.StockNumber ?? null,
-    salePrice: data.SalesPrice ?? data.BottomLineSellPrice ?? data.VehiclePrice ?? null,
-    downPayment: data.TotalCashDownAmount ?? data.TotalDownPayment ?? null,
-    amountFinanced: data.AmountFinanced ?? data.FinancedAmount ?? null,
-    apr: data.APRRate ?? null,
-    term: data.Term ?? null,
-    monthlyPayment: data.MonthlyPayment ?? data.MonthlyPaymentAmount ?? null,
-    saleDate: data.SaleDate ?? null,
-    salesPersonName: data.SalesPersonName ?? data.Salesman ?? null,
-    financeManagerName: data.FinanceManagerName ?? null,
-    lenderName: data.AssignToLender ?? null,
-    signed:
-      data.IsBuyerSigned === true ||
-      data.IsBuyerSigned === "true" ||
-      Boolean(data.BuyerSignedDate),
-    signedDate: data.BuyerSignedDate ?? data.DealCompletedDate ?? null,
-    isCoBuyerSigned: data.IsCoBuyerSigned === true || Boolean(data.CoBuyerSignedDate),
-  }
-}
-
-async function getScrapedDeal(): Promise<RawTaptosignScrape | null> {
+// ── Site detection ────────────────────────────────────────────────────────────
+type Site = "taptosign" | "routeone" | null
+async function detectSite(): Promise<Site> {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+  if (!tab?.url) return null
+  let host: string
   try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-    if (!tab?.id || !tab.url) return null
-    let host: string
-    try {
-      host = new URL(tab.url).hostname
-    } catch {
-      return null
-    }
-    if (host !== "taptosign.com" && !host.endsWith(".taptosign.com")) return null
-    const results = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      world: "MAIN",
-      func: scrapeFromMainWorld,
-    })
-    return (results?.[0]?.result as RawTaptosignScrape | null) ?? null
+    host = new URL(tab.url).hostname
   } catch {
     return null
   }
-}
-
-// ── Flat scrape → nested wire payload ─────────────────────────────────────────
-function str(v: string | number | null | undefined): string | undefined {
-  if (v == null) return undefined
-  const s = String(v).trim()
-  return s === "" ? undefined : s
-}
-function toNum(v: string | number | null | undefined): number | undefined {
-  if (v == null || v === "") return undefined
-  const n = typeof v === "number" ? v : Number(String(v).replace(/[$,%\s]/g, ""))
-  return Number.isFinite(n) ? n : undefined
-}
-// Split a full name on the FIRST space: "Robert Downey Jr" → "Robert" / "Downey
-// Jr"; "Madonna" → "Madonna" / "".
-function splitName(full: string | null | undefined): { firstName: string; lastName: string } {
-  const trimmed = (full ?? "").trim()
-  if (!trimmed) return { firstName: "", lastName: "" }
-  const idx = trimmed.indexOf(" ")
-  if (idx === -1) return { firstName: trimmed, lastName: "" }
-  return { firstName: trimmed.slice(0, idx), lastName: trimmed.slice(idx + 1).trim() }
-}
-
-function mapScrape(raw: RawTaptosignScrape | null): TaptosignDealPayload | null {
-  if (!raw || !raw.taptosignDealId) return null
-  const buyer = splitName(raw.customerName)
-  const hasCoBuyer = Boolean(raw.coBuyerName || raw.coBuyerEmail)
-  const hasSales = Boolean(raw.salesPersonName || raw.financeManagerName)
-  return {
-    taptosignDealId: String(raw.taptosignDealId),
-    customer: {
-      firstName: buyer.firstName || undefined,
-      lastName: buyer.lastName || undefined,
-      email: str(raw.customerEmail),
-    },
-    coBuyer: hasCoBuyer
-      ? { name: str(raw.coBuyerName), email: str(raw.coBuyerEmail), signed: raw.isCoBuyerSigned === true }
-      : undefined,
-    vehicle: {
-      vin: str(raw.vehicleVin),
-      year: str(raw.vehicleYear),
-      make: str(raw.vehicleMake),
-      model: str(raw.vehicleModel),
-      miles: str(raw.vehicleMileage),
-      stockNumber: str(raw.stockNumber),
-    },
-    finance: {
-      salePrice: toNum(raw.salePrice),
-      downPayment: toNum(raw.downPayment),
-      amountFinanced: toNum(raw.amountFinanced),
-      apr: toNum(raw.apr),
-      term: toNum(raw.term),
-      monthlyPayment: toNum(raw.monthlyPayment),
-      lenderName: str(raw.lenderName),
-    },
-    sales: hasSales
-      ? { salesPersonName: str(raw.salesPersonName), financeManagerName: str(raw.financeManagerName) }
-      : undefined,
-    signed: raw.signed === true,
-    signedAt: str(raw.signedDate),
-    saleDate: str(raw.saleDate),
-  }
+  if (host === "taptosign.com" || host.endsWith(".taptosign.com")) return "taptosign"
+  if (host === "www.routeone.net" || host.endsWith(".routeone.net")) return "routeone"
+  return null
 }
 
 // ── State 1 / settings — connect form ─────────────────────────────────────────
@@ -243,11 +133,11 @@ function renderConnect(settings: Settings, isSettings: boolean) {
   }
 }
 
-// ── State 2 — connected, not on a deal page ───────────────────────────────────
-function renderConnected(_settings: Settings) {
+// ── State 2 — connected, no syncable deal on the active tab ───────────────────
+function renderConnected(message: string) {
   app.innerHTML = `
     ${header("connected")}
-    <div class="notice">Open a TaptoSign deal page to sync.</div>
+    <div class="notice">${esc(message)}</div>
     ${settingsLink()}
   `
   wireSettingsLink()
@@ -320,9 +210,23 @@ async function render() {
     renderConnect(settings, forceSettings)
     return
   }
-  const payload = mapScrape(await getScrapedDeal())
-  if (payload) renderDeal(payload)
-  else renderConnected(settings)
+
+  const site = await detectSite()
+  if (site === "taptosign") {
+    const payload = mapScrape(await getScrapedDeal())
+    if (payload) renderDeal(payload)
+    else renderConnected("Open a TaptoSign deal page to sync.")
+  } else if (site === "routeone") {
+    const routeone = await getRouteoneScrape() // stubbed → null until Slice 3.2
+    if (routeone) {
+      // Slice 3.2 will render a RouteOne preview here.
+      renderConnected("RouteOne sync arrives in the next update.")
+    } else {
+      renderConnected("RouteOne sync arrives in the next update.")
+    }
+  } else {
+    renderConnected("Open a TaptoSign deal page to sync.")
+  }
 }
 
 render()

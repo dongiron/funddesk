@@ -1,5 +1,10 @@
 import { getSettings } from "./storage"
-import type { SyncResult, TaptosignDealPayload, TestResult } from "../shared/types"
+import type {
+  RouteoneSyncPayload,
+  SyncResult,
+  TaptosignDealPayload,
+  TestResult,
+} from "../shared/types"
 
 // Typed fetch wrapper, called from the background service worker. The worker has
 // host permission for the configured FundDesk origin (granted at connect time),
@@ -7,6 +12,10 @@ import type { SyncResult, TaptosignDealPayload, TestResult } from "../shared/typ
 
 function normalizeBase(url: string): string {
   return url.replace(/\/+$/, "")
+}
+
+function syncUrl(base: string, source: "taptosign" | "routeone"): string {
+  return `${normalizeBase(base)}/api/extensions/${source}/sync`
 }
 
 function describeStatus(status: number): string {
@@ -24,7 +33,7 @@ export async function syncDeal(
 
   let res: Response
   try {
-    res = await fetch(`${normalizeBase(serverUrl)}/api/extensions/taptosign/sync`, {
+    res = await fetch(syncUrl(serverUrl, "taptosign"), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -54,6 +63,15 @@ export async function syncDeal(
   }
 
   return { ok: false, error: describeStatus(res.status), status: res.status }
+}
+
+// Stub — wired up in Slice 3.2 (real payload + result shape land then). Posts to
+// syncUrl(serverUrl, "routeone"). Unused this slice: the worker doesn't route
+// SYNC_ROUTEONE and the popup never sends it.
+export async function syncRouteoneBatch(
+  _payload: RouteoneSyncPayload
+): Promise<SyncResult> {
+  return { ok: false, error: "RouteOne sync not implemented yet.", status: 0 }
 }
 
 export async function testConnection(): Promise<TestResult> {

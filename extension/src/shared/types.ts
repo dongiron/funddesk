@@ -30,33 +30,9 @@ export type TaptosignDealPayload = {
   saleDate?: string
 }
 
-// Flat object returned by the MAIN-world scrape (a window.pdfSignData read).
-export type RawTaptosignScrape = {
-  taptosignDealId: string | null
-  customerName: string | null
-  customerEmail: string | null
-  coBuyerName: string | null
-  coBuyerEmail: string | null
-  vehicleYear: string | number | null
-  vehicleMake: string | null
-  vehicleModel: string | null
-  vehicleVin: string | null
-  vehicleMileage: string | number | null
-  stockNumber: string | number | null
-  salePrice: string | number | null
-  downPayment: string | number | null
-  amountFinanced: string | number | null
-  apr: string | number | null
-  term: string | number | null
-  monthlyPayment: string | number | null
-  saleDate: string | null
-  salesPersonName: string | null
-  financeManagerName: string | null
-  lenderName: string | null
-  signed: boolean
-  signedDate: string | null
-  isCoBuyerSigned: boolean
-}
+// Stub wire shape for the RouteOne batch sync (Slice 3.2 fills the contract
+// shape). RawTaptosignScrape now lives with its scraper in scrapers/taptosign.ts.
+export type RouteoneSyncPayload = { contracts: never[] }
 
 // ── API results (background worker → popup) ───────────────────────────────────
 export type SyncResult =
@@ -67,8 +43,12 @@ export type TestResult = { ok: true } | { ok: false; error: string; status: numb
 
 // ── Message envelopes (popup → background) ────────────────────────────────────
 export type SyncDealMessage = { type: "SYNC_DEAL"; payload: TaptosignDealPayload }
+export type SyncRouteoneMessage = { type: "SYNC_ROUTEONE"; payload: RouteoneSyncPayload }
 export type TestConnectionMessage = { type: "TEST_CONNECTION" }
-export type BackgroundMessage = SyncDealMessage | TestConnectionMessage
+export type BackgroundMessage =
+  | SyncDealMessage
+  | SyncRouteoneMessage
+  | TestConnectionMessage
 
 export type Settings = { token?: string; serverUrl: string }
 

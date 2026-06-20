@@ -1,28 +1,37 @@
-# FundDesk Sync for TaptoSign
+# FundDesk Sync
 
-Manifest V3 Chrome extension that reads a TaptoSign deal and POSTs it to the
-FundDesk sync endpoint. Self-contained: its own `package.json` and toolchain,
-separate from the FundDesk web app. Vercel never builds this directory.
+Manifest V3 Chrome extension that reads a deal off a supported site (TaptoSign
+today, RouteOne next) and POSTs it to the FundDesk sync endpoint. Self-contained:
+its own `package.json` and toolchain, separate from the FundDesk web app. Vercel
+never builds this directory.
 
 ## Architecture
 
 No declared content script. The popup, on user action, injects a MAIN-world
-function into the active tab to read TaptoSign's internal deal object directly —
-no HTML scraping, no declared host permission for taptosign.com.
+function into the active tab to read the site's internal deal object directly —
+no HTML scraping, no declared host permissions for the scraped sites
+(`activeTab` + the popup click authorizes the injection).
 
-- **popup/popup.ts** — the whole flow: token check, active-tab check, the
-  injection, the preview, and the sync trigger.
-  - `scrapeFromMainWorld()` — self-contained function run via
-    `chrome.scripting.executeScript({ world: "MAIN", func })`. Reads
-    `window.pdfSignData` (TaptoSign's injected deal record) and returns a flat
-    object. Runs only when you open the popup on a `*.taptosign.com` tab —
-    `activeTab` + the popup click is what authorizes it.
-  - `mapScrape()` — translates that flat object into the nested wire payload
-    (`src/shared/types.ts`), splitting the buyer name on the first space.
+**Multi-scraper pattern.** The popup is thin glue: `detectSite()` inspects the
+active tab's host and routes to the matching module under `src/scrapers/`. Each
+scraper owns its own site-specific scrape + mapping; the popup never contains
+site logic.
+
+- **popup/popup.ts** — token check, `detectSite()`, route to the scraper, render
+  the preview, trigger the sync.
+- **scrapers/taptosign.ts** — `getScrapedDeal()` runs
+  `chrome.scripting.executeScript({ world: "MAIN", func })` to read
+  `window.pdfSignData` (TaptoSign's injected deal record) on a `*.taptosign.com`
+  tab; `mapScrape()` translates the flat scrape into the nested wire payload
+  (`src/shared/types.ts`), splitting the buyer name on the first space.
+- **scrapers/routeone.ts** — **stubbed until Slice 3.2.** `getRouteoneScrape()`
+  returns `null` today; the popup shows "RouteOne sync arrives in the next
+  update." The API client (`syncRouteoneBatch`) and message type
+  (`SYNC_ROUTEONE`) are stubbed in parallel as fill-in targets.
 - **background/service-worker.ts** — owns all network calls to FundDesk (so they
   bypass page CORS). Handles `SYNC_DEAL` and `TEST_CONNECTION` messages.
-- **lib/api.ts / lib/storage.ts** — fetch wrapper + `chrome.storage.local`
-  helpers (token, server URL).
+- **lib/api.ts / lib/storage.ts** — fetch wrapper (per-site `…/api/extensions/
+  ${source}/sync` endpoint) + `chrome.storage.local` helpers (token, server URL).
 
 ## Setup
 
