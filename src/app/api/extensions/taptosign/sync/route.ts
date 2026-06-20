@@ -15,6 +15,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 import { validateExtensionToken } from "@/lib/extension-tokens"
 import { createServiceRoleClient } from "@/lib/supabase/service"
+import { matchLenderByName, type LenderRow } from "@/lib/lender-match"
 import { phoenixToday } from "@/app/deals/deal-schema"
 
 // States from which a freshly-signed deal advances to "ready_to_send". A deal
@@ -125,19 +126,18 @@ export async function POST(request: Request) {
 
   const supabase = createServiceRoleClient()
 
-  // 3. Lender matching — case-insensitive trimmed exact match, scoped to tenant.
+  // 3. Lender matching via the shared catalog matcher (exact, then prefix),
+  //    scoped to tenant. Ambiguous matches stay unmatched (raw text retained).
   const rawLenderName = body.finance.lenderName?.trim()
   let lenderId: string | null = null
   if (rawLenderName) {
-    const { data: lender } = await supabase
+    const { data: lenders } = await supabase
       .from("lenders")
-      .select("id")
+      .select("id, name")
       .eq("dealership_id", dealershipId)
       .is("deleted_at", null)
-      .ilike("name", rawLenderName)
-      .limit(1)
-      .maybeSingle()
-    lenderId = (lender?.id as string | undefined) ?? null
+    const result = matchLenderByName(rawLenderName, (lenders ?? []) as LenderRow[])
+    if (result.matched) lenderId = result.lenderId
   }
   const lenderMapped = lenderId !== null
 

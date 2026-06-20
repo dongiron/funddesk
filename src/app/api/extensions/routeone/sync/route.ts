@@ -20,6 +20,8 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 import { validateExtensionToken } from "@/lib/extension-tokens"
 import { createServiceRoleClient } from "@/lib/supabase/service"
+import { matchLenderByName, type LenderRow } from "@/lib/lender-match"
+import { PIPELINE_STATES } from "@/app/deals/deal-schema"
 
 const contractSchema = z.object({
   routeoneDealId: z.string().min(1),
@@ -80,6 +82,30 @@ function toContractDate(v: string | null | undefined): string | null {
   return m ? `${m[1]}-${m[2]}-${m[3]}` : null
 }
 
+// RouteOne funding status → pipeline_state target, or null for statuses that
+// shouldn't auto-advance (Conditioned, Rejected, Pending, …).
+function routeoneStatusToPipeline(routeoneStatus: string): string | null {
+  const s = (routeoneStatus ?? "").toLowerCase().trim()
+  if (s.includes("funded")) return "funded"
+  if (s.includes("booked")) return "funds_in_transit"
+  return null
+}
+
+// Advance-only: returns the new state when RouteOne's status maps to a later
+// pipeline position than the deal's current one, else null (never regress —
+// 'unwound' is last in the order, so a funded/booked target can't override it).
+function nextPipelineFromRouteone(
+  current: string | null,
+  routeoneStatus: string
+): string | null {
+  const target = routeoneStatusToPipeline(routeoneStatus)
+  if (!target) return null
+  const order = PIPELINE_STATES as readonly string[]
+  const currentIdx = current ? order.indexOf(current) : -1
+  if (order.indexOf(target) > currentIdx) return target
+  return null
+}
+
 type UnmatchedRow = {
   customerName: string | null
   routeoneDealId: string
@@ -113,16 +139,13 @@ export async function POST(request: Request) {
 
   const supabase = createServiceRoleClient()
 
-  // 3. Lender catalog (one fetch, reused per row): lowercased trimmed name → id.
-  const { data: lenders } = await supabase
+  // 3. Lender catalog (one fetch, reused per row) for the shared matcher.
+  const { data: lenderData } = await supabase
     .from("lenders")
     .select("id, name")
     .eq("dealership_id", dealershipId)
     .is("deleted_at", null)
-  const lenderByName = new Map<string, string>()
-  for (const l of lenders ?? []) {
-    lenderByName.set(String(l.name).trim().toLowerCase(), l.id as string)
-  }
+  const lenderRows = (lenderData ?? []) as LenderRow[]
 
   let matched = 0
   const unmatchedRows: UnmatchedRow[] = []
@@ -132,12 +155,13 @@ export async function POST(request: Request) {
     // a. Instant match by routeone_deal_id (set on a prior sync).
     const { data: byId } = await supabase
       .from("deals")
-      .select("id")
+      .select("id, pipeline_state")
       .eq("dealership_id", dealershipId)
       .eq("routeone_deal_id", c.routeoneDealId)
       .is("deleted_at", null)
       .maybeSingle()
     let dealId = (byId?.id as string | undefined) ?? null
+    let currentPipeline = (byId?.pipeline_state as string | undefined) ?? null
 
     // b. Fallback: fuzzy customer-name match. RouteOne shows "Last, First" (no
     //    middle, sometimes a truncated first like "Steve"); FundDesk often stores
@@ -151,7 +175,7 @@ export async function POST(request: Request) {
       if (pn && lastWord) {
         const { data: candidates } = await supabase
           .from("deals")
-          .select("id, customer_first_name, customer_last_name")
+          .select("id, customer_first_name, customer_last_name, pipeline_state")
           .eq("dealership_id", dealershipId)
           .is("deleted_at", null)
           .ilike("customer_last_name", `%${lastWord}%`)
@@ -168,7 +192,10 @@ export async function POST(request: Request) {
           return true
         })
 
-        if (survivors.length === 1) dealId = survivors[0].id as string
+        if (survivors.length === 1) {
+          dealId = survivors[0].id as string
+          currentPipeline = (survivors[0].pipeline_state as string | undefined) ?? null
+        }
       }
     }
 
@@ -182,12 +209,16 @@ export async function POST(request: Request) {
       continue
     }
 
-    // c. Lender catalog match. Raw text is ALWAYS stored for provenance; lender_id
-    //    is set only on a catalog match (RouteOne is the source of truth for the
-    //    funding lender, so a match overwrites any prior lender_id). Never null an
-    //    existing lender_id on a miss.
+    // c. Lender catalog match via the shared matcher (exact, then prefix). Raw
+    //    text is ALWAYS stored for provenance; lender_id is set only on a match
+    //    (RouteOne is the source of truth for the funding lender, so a match
+    //    overwrites any prior lender_id). Never null an existing lender_id.
     const rawLender = c.fundingLenderName?.trim() || null
-    const matchedLenderId = rawLender ? (lenderByName.get(rawLender.toLowerCase()) ?? null) : null
+    let matchedLenderId: string | null = null
+    if (rawLender) {
+      const r = matchLenderByName(rawLender, lenderRows)
+      if (r.matched) matchedLenderId = r.lenderId
+    }
 
     const update: Record<string, unknown> = {
       routeone_deal_id: c.routeoneDealId,
@@ -203,6 +234,14 @@ export async function POST(request: Request) {
       routeone_last_synced_at: new Date().toISOString(),
     }
     if (matchedLenderId) update.lender_id = matchedLenderId
+
+    // Canonical fields: RouteOne is authoritative for the funded amount, and its
+    // status advances the pipeline (advance-only — see nextPipelineFromRouteone).
+    if (c.amountFinanced != null) update.amount_financed = c.amountFinanced
+    const nextState = c.fundingStatus
+      ? nextPipelineFromRouteone(currentPipeline, c.fundingStatus)
+      : null
+    if (nextState) update.pipeline_state = nextState
 
     const { error } = await supabase
       .from("deals")
