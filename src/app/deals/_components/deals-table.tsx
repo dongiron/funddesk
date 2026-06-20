@@ -29,6 +29,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { DealForm } from "./deal-form"
+import { RouteoneFundingPanel } from "./funding-panel"
 import { UnwindDealDialog } from "./unwind-deal-dialog"
 import { BlocksSheet } from "./blocks-sheet"
 import { StipsSheet } from "./stips-sheet"
@@ -48,6 +49,17 @@ function vehicle(d: Deal): string {
 }
 function activeBlockCount(d: DealWithBlocks): number {
   return d.blocks.filter((b) => b.resolved_at === null).length
+}
+
+// Border/text tone for the RouteOne funding-status chip. Keyword lists are a
+// starting point — tune as more real status strings surface.
+function fundingChipTone(status: string): string {
+  const s = status.toLowerCase()
+  if (/\b(funded|booked)\b/.test(s)) return "text-success border-success/40"
+  if (/(reject|declin|cancel|return|withdraw|error)/.test(s)) return "text-danger border-danger/40"
+  if (/(condition|pending|review|process|received|hold|submitted|approv)/.test(s))
+    return "text-gold border-gold/40"
+  return "text-fg-secondary border-line"
 }
 
 const CHIP =
@@ -249,13 +261,22 @@ export function DealsTable({
                   <div className="truncate text-sm font-medium text-fg-primary">
                     {fullName(d)} · {vehicle(d)}
                   </div>
-                  <div className="truncate font-mono text-[10px] lowercase text-fg-tertiary">
-                    {lenderUnmapped ? (
-                      <span className="text-fg-muted italic">{unmappedLabel}</span>
-                    ) : (
-                      d.lender?.name
+                  <div className="flex items-center gap-1.5">
+                    <span className="truncate font-mono text-[10px] lowercase text-fg-tertiary">
+                      {lenderUnmapped ? (
+                        <span className="text-fg-muted italic">{unmappedLabel}</span>
+                      ) : (
+                        d.lender?.name
+                      )}
+                      {meta ? ` · ${meta}` : ""}
+                    </span>
+                    {d.routeone_funding_status && (
+                      <span
+                        className={`shrink-0 rounded-sm border px-1.5 py-px font-mono text-[9px] whitespace-nowrap uppercase ${fundingChipTone(d.routeone_funding_status)}`}
+                      >
+                        {d.routeone_funding_status}
+                      </span>
                     )}
-                    {meta ? ` · ${meta}` : ""}
                   </div>
                 </div>
                 <div className="text-right font-mono text-sm font-bold text-fg-primary">
@@ -323,12 +344,15 @@ export function DealsTable({
             </SheetDescription>
           </SheetHeader>
           {sheetOpen && (
-            <DealForm
-              deal={editingDeal}
-              lenders={lenders}
-              onSuccess={() => setEditing(null)}
-              onCancel={() => setEditing(null)}
-            />
+            <>
+              {editingDeal && <RouteoneFundingPanel deal={editingDeal} />}
+              <DealForm
+                deal={editingDeal}
+                lenders={lenders}
+                onSuccess={() => setEditing(null)}
+                onCancel={() => setEditing(null)}
+              />
+            </>
           )}
         </SheetContent>
       </Sheet>

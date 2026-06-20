@@ -229,6 +229,17 @@ export type Deal = {
   unwind_gross_profit: number | null
   taptosign_deal_id: string | null
   taptosign_lender_name: string | null
+  routeone_deal_id: string | null
+  routeone_contract_number: string | null
+  routeone_funding_lender_name: string | null
+  routeone_funding_status: string | null
+  routeone_has_unread_message: boolean
+  routeone_amount_financed: number | null
+  routeone_reserve_amount: number | null
+  routeone_net_proceeds: number | null
+  routeone_contract_date: string | null
+  routeone_is_dsp_originated: boolean
+  routeone_last_synced_at: string | null
 }
 
 // Minimal lender shape the form needs (Select + create-time pre-fill).
@@ -254,7 +265,11 @@ export const DEAL_SELECT =
   "trade_acv, trade_allowance, trade_payoff_quoted, trade_payoff_lender, " +
   "trade_payoff_sent_date, trade_payoff_received_date, trade_title_received_date, " +
   "unwound_date, unwind_reason, unwind_gross_profit, taptosign_deal_id, " +
-  "taptosign_lender_name, lender:lender_id(name, overdue_threshold_days)"
+  "taptosign_lender_name, routeone_deal_id, routeone_contract_number, " +
+  "routeone_funding_lender_name, routeone_funding_status, routeone_has_unread_message, " +
+  "routeone_amount_financed, routeone_reserve_amount, routeone_net_proceeds, " +
+  "routeone_contract_date, routeone_is_dsp_originated, routeone_last_synced_at, " +
+  "lender:lender_id(name, overdue_threshold_days)"
 
 // ── History date-range filter ────────────────────────────────────────────────
 export const RANGE_OPTIONS = [
