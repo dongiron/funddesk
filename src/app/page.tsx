@@ -74,7 +74,7 @@ export default async function Home() {
   const { data: activeData } = await supabase
     .from("deals")
     .select(ACTIVE_SELECT)
-    .not("pipeline_state", "in", "(funded,unwound)")
+    .not("pipeline_state", "in", "(funded,payment_cleared,unwound)")
     .is("deleted_at", null)
     .returns<ActiveDealRow[]>()
   const activeDeals = activeData ?? []

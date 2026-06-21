@@ -32,7 +32,7 @@ export default async function DealsPage() {
   const { data: deals } = await supabase
     .from("deals")
     .select(DEAL_SELECT)
-    .not("pipeline_state", "in", "(funded,unwound)")
+    .not("pipeline_state", "in", "(funded,payment_cleared,unwound)")
     .is("deleted_at", null)
     .order("sold_date", { ascending: false })
     .returns<Deal[]>()

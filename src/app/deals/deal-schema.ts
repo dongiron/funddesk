@@ -15,6 +15,8 @@ export const PIPELINE_STATES = [
   "waiting_to_fund",
   "funds_in_transit",
   "funded",
+  "awaiting_payment",
+  "payment_cleared",
   "unwound",
 ] as const
 
@@ -29,6 +31,8 @@ export const PIPELINE_STATE_LABELS: Record<string, string> = {
   waiting_to_fund: "Waiting to fund",
   funds_in_transit: "Funds in transit",
   funded: "Funded",
+  awaiting_payment: "Awaiting payment",
+  payment_cleared: "Payment cleared",
   unwound: "Unwound",
 }
 
@@ -44,24 +48,49 @@ export const PIPELINE_STATE_SHORT: Record<string, string> = {
   waiting_to_fund: "waiting fund",
   funds_in_transit: "in transit",
   funded: "funded",
+  awaiting_payment: "awaiting pay",
+  payment_cleared: "cleared",
   unwound: "unwound",
 }
 
-// Pill color variant per state. Gold = brand/near-funding, green = funded,
+// Pill color variant per state. Gold = brand/near-funding, green = funded/cleared,
 // red = unwound, neutral = everything else. (Never semantic for the gold.)
 export type PillVariant = "gold" | "green" | "red" | "neutral"
 export function pillVariant(state: string): PillVariant {
   if (state === "waiting_to_fund" || state === "funds_in_transit") return "gold"
-  if (state === "funded") return "green"
+  if (state === "awaiting_payment") return "gold"
+  if (state === "funded" || state === "payment_cleared") return "green"
   if (state === "unwound") return "red"
   return "neutral"
 }
 
-// Selectable in the form: everything except 'unwound'.
-export const FORM_PIPELINE_STATES = PIPELINE_STATES.filter((s) => s !== "unwound")
+// Pipeline states valid for each payment method (canonical per-method set).
+export const STATES_BY_METHOD: Record<"financed" | "cash", readonly string[]> = {
+  financed: [
+    "signed",
+    "waiting_for_scan",
+    "gathering_paperwork",
+    "gathering_stips",
+    "ready_to_send",
+    "submitted",
+    "awaiting_physical_delivery",
+    "waiting_to_fund",
+    "funds_in_transit",
+    "funded",
+    "unwound",
+  ],
+  cash: ["signed", "awaiting_payment", "payment_cleared", "unwound"],
+}
 
-// Terminal states excluded from the active list.
-export const TERMINAL_STATES = ["funded", "unwound"] as const
+// Selectable in the form, per payment method, minus 'unwound' (set via the unwind
+// dialog, which supplies the metadata the unwound_state CHECK requires).
+export function formPipelineStates(paymentMethod: string | null | undefined): string[] {
+  const list = STATES_BY_METHOD[paymentMethod === "cash" ? "cash" : "financed"]
+  return list.filter((s) => s !== "unwound")
+}
+
+// Terminal states excluded from the active list (funded + cash analog + unwound).
+export const TERMINAL_STATES = ["funded", "payment_cleared", "unwound"] as const
 
 // ── Reusable zod field validators (form holds strings; mapped to typed input) ─
 const optionalNumber = z
@@ -240,6 +269,10 @@ export type Deal = {
   routeone_contract_date: string | null
   routeone_is_dsp_originated: boolean
   routeone_last_synced_at: string | null
+  payment_method: string
+  balance_due: number | null
+  funds_cleared: boolean
+  funds_cleared_at: string | null
 }
 
 // Minimal lender shape the form needs (Select + create-time pre-fill).
@@ -269,6 +302,7 @@ export const DEAL_SELECT =
   "routeone_funding_lender_name, routeone_funding_status, routeone_has_unread_message, " +
   "routeone_amount_financed, routeone_reserve_amount, routeone_net_proceeds, " +
   "routeone_contract_date, routeone_is_dsp_originated, routeone_last_synced_at, " +
+  "payment_method, balance_due, funds_cleared, funds_cleared_at, " +
   "lender:lender_id(name, overdue_threshold_days)"
 
 // ── History date-range filter ────────────────────────────────────────────────

@@ -230,6 +230,9 @@ export async function POST(request: Request) {
       routeone_has_unread_message: c.hasUnreadMessage,
       routeone_is_dsp_originated: c.isDspOriginated,
       routeone_last_synced_at: new Date().toISOString(),
+      // RouteOne deals are financed by definition — set it unconditionally so a
+      // prior cash mis-classification can't survive (D-routeone-explicit).
+      payment_method: "financed",
     }
     setIfPresent(update, "routeone_contract_number", c.contractNumber)
     setIfPresent(update, "routeone_funding_lender_name", rawLender)

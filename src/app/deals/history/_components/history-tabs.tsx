@@ -4,6 +4,9 @@ import { useState } from "react"
 import type { Deal } from "../../deal-schema"
 import { StatePill } from "../../_components/state-pill"
 import { DealForm } from "../../_components/deal-form"
+import { CashPanel } from "../../_components/cash-panel"
+import { RouteoneFundingPanel } from "../../_components/funding-panel"
+import { PipelineControl } from "../../_components/pipeline-control"
 import {
   Sheet,
   SheetContent,
@@ -136,13 +139,21 @@ export function HistoryTabs({
             </SheetDescription>
           </SheetHeader>
           {selected && (
-            <DealForm
-              deal={selected}
-              lenders={[]}
-              readOnly
-              onSuccess={() => setSelected(null)}
-              onCancel={() => setSelected(null)}
-            />
+            <>
+              {selected.payment_method === "cash" ? (
+                <CashPanel deal={selected} />
+              ) : (
+                <RouteoneFundingPanel deal={selected} />
+              )}
+              <PipelineControl deal={selected} />
+              <DealForm
+                deal={selected}
+                lenders={[]}
+                readOnly
+                onSuccess={() => setSelected(null)}
+                onCancel={() => setSelected(null)}
+              />
+            </>
           )}
         </SheetContent>
       </Sheet>

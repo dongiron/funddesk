@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 import {
   phoenixToday,
+  PIPELINE_STATES,
   type ActionResult,
   type DealInput,
   type UnwindInput,
@@ -193,6 +194,97 @@ export async function unwindDeal(
   }
 
   revalidatePath("/deals")
+  return { ok: true }
+}
+
+// Cash deals: toggle funds_cleared and auto-advance the pipeline. Clearing
+// stamps funds_cleared_at and advances awaiting_payment → payment_cleared;
+// un-clearing reverses both (symmetric undo). Only those two states move — never
+// regress from unwound or any financed state.
+export async function setFundsCleared(
+  id: string,
+  cleared: boolean
+): Promise<ActionResult> {
+  const ctx = await requireDealActor()
+  if ("error" in ctx) return { ok: false, error: ctx.error }
+
+  const { data: current, error: readErr } = await ctx.supabase
+    .from("deals")
+    .select("pipeline_state")
+    .eq("id", id)
+    .is("deleted_at", null)
+    .maybeSingle()
+  if (readErr) {
+    console.error("setFundsCleared read failed:", readErr)
+    return { ok: false, error: friendly(readErr) }
+  }
+  if (!current) {
+    return { ok: false, error: "You don't have permission to perform this action." }
+  }
+
+  const state = current.pipeline_state as string
+  const update: Record<string, unknown> = {
+    funds_cleared: cleared,
+    funds_cleared_at: cleared ? new Date().toISOString() : null,
+  }
+  if (cleared && state === "awaiting_payment") update.pipeline_state = "payment_cleared"
+  if (!cleared && state === "payment_cleared") update.pipeline_state = "awaiting_payment"
+
+  const { data, error } = await ctx.supabase
+    .from("deals")
+    .update(update)
+    .eq("id", id)
+    .is("deleted_at", null)
+    .select("id")
+
+  if (error) {
+    console.error("setFundsCleared failed:", error)
+    return { ok: false, error: friendly(error) }
+  }
+  if (!data || data.length === 0) {
+    return { ok: false, error: "You don't have permission to perform this action." }
+  }
+
+  revalidatePath("/deals")
+  revalidatePath("/")
+  return { ok: true }
+}
+
+// Move a deal's pipeline_state directly (used by the immediate-write pipeline
+// control, incl. read-only/history views — D-history-editing). 'unwound' is
+// excluded: it requires metadata and goes through the unwind dialog.
+export async function setPipelineState(
+  id: string,
+  state: string
+): Promise<ActionResult> {
+  const ctx = await requireDealActor()
+  if ("error" in ctx) return { ok: false, error: ctx.error }
+
+  if (!(PIPELINE_STATES as readonly string[]).includes(state)) {
+    return { ok: false, error: "Invalid pipeline state." }
+  }
+  if (state === "unwound") {
+    return { ok: false, error: "Use the Unwind action to unwind a deal." }
+  }
+
+  const { data, error } = await ctx.supabase
+    .from("deals")
+    .update({ pipeline_state: state })
+    .eq("id", id)
+    .is("deleted_at", null)
+    .select("id")
+
+  if (error) {
+    console.error("setPipelineState failed:", error)
+    return { ok: false, error: friendly(error) }
+  }
+  if (!data || data.length === 0) {
+    return { ok: false, error: "You don't have permission to perform this action." }
+  }
+
+  revalidatePath("/deals")
+  revalidatePath("/deals/history")
+  revalidatePath("/")
   return { ok: true }
 }
 

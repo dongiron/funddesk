@@ -90,6 +90,21 @@ function nextPipelineState(current: string | null, signed: boolean): string {
   return base
 }
 
+// Pipeline advance per payment method. Cash deals run a separate flow: a new or
+// just-signed cash deal advances to awaiting_payment; an already-advanced cash
+// deal is left as-is (funds_cleared → payment_cleared is handled by the
+// setFundsCleared action, not the sync). Financed deals use nextPipelineState.
+function nextPipeline(
+  current: string | null,
+  paymentMethod: "financed" | "cash",
+  signed: boolean
+): string {
+  if (paymentMethod === "cash") {
+    return current === null || current === "signed" ? "awaiting_payment" : current
+  }
+  return nextPipelineState(current, signed)
+}
+
 // saleDate from TaptoSign → a YYYY-MM-DD sold_date, else today (Phoenix). Format
 // isn't pinned by TaptoSign, so accept an ISO prefix or anything Date can parse
 // before falling back to today.
@@ -139,9 +154,10 @@ export async function POST(request: Request) {
 
   const supabase = createServiceRoleClient()
 
+  const rawLenderName = body.finance.lenderName?.trim()
+
   // 3. Lender matching via the shared catalog matcher (exact, then prefix),
   //    scoped to tenant. Ambiguous matches stay unmatched (raw text retained).
-  const rawLenderName = body.finance.lenderName?.trim()
   let lenderId: string | null = null
   if (rawLenderName) {
     const { data: lenders } = await supabase
@@ -154,14 +170,56 @@ export async function POST(request: Request) {
   }
   const lenderMapped = lenderId !== null
 
-  // 4. Look up an existing synced deal (tenant-scoped upsert key).
-  const { data: existing } = await supabase
+  // 4. Look up the existing synced deal (tenant-scoped upsert key). Pull RouteOne
+  //    provenance too — it's authoritative evidence the deal is financed.
+  const { data: existingData } = await supabase
     .from("deals")
-    .select("id, pipeline_state")
+    .select(
+      "id, pipeline_state, lender_id, amount_financed, " +
+        "routeone_funding_lender_name, routeone_deal_id, routeone_contract_number"
+    )
     .eq("dealership_id", dealershipId)
     .eq("taptosign_deal_id", body.taptosignDealId)
     .is("deleted_at", null)
     .maybeSingle()
+  const existing = existingData as {
+    id: string
+    pipeline_state: string
+    lender_id: string | null
+    amount_financed: number | null
+    routeone_funding_lender_name: string | null
+    routeone_deal_id: string | null
+    routeone_contract_number: string | null
+  } | null
+
+  // 5. Cash detection (recomputed every sync). ANY prior financed signal from ANY
+  //    source is authoritative — a deal is only cash when financed signals are
+  //    absent everywhere (D-routeone-authoritative). This overrides TaptoSign's
+  //    AssignToLender null gap. Otherwise financed iff a financed amount AND a
+  //    named lender this sync; else cash.
+  const hasRouteoneData = !!(
+    existing?.routeone_funding_lender_name ||
+    existing?.routeone_deal_id ||
+    existing?.routeone_contract_number
+  )
+  const existingHasLender = !!existing?.lender_id
+  const existingHasFinancedAmount = (existing?.amount_financed ?? 0) > 0
+  // FUTURE: when CUDL sync ships, OR in its provenance signals here.
+  const hasFinancedSignals =
+    hasRouteoneData || existingHasLender || existingHasFinancedAmount
+  const hasLenderName = !!rawLenderName
+  const taptosignSuggestsFinanced =
+    (body.finance.amountFinanced ?? 0) > 0 && hasLenderName
+  const paymentMethod: "financed" | "cash" =
+    taptosignSuggestsFinanced || hasFinancedSignals ? "financed" : "cash"
+  // TaptoSign's AmountFinanced carries the owed amount generically; fall back to
+  // sale_price - down_payment. Routed to balance_due (cash) or amount_financed
+  // (financed) below.
+  const owedAmount =
+    body.finance.amountFinanced ??
+    (body.finance.salePrice != null
+      ? body.finance.salePrice - (body.finance.downPayment ?? 0)
+      : null)
 
   const year = body.vehicle.year ? Number.parseInt(body.vehicle.year, 10) : NaN
 
@@ -177,7 +235,6 @@ export async function POST(request: Request) {
   setIfPresent(mapped, "vehicle_model", body.vehicle.model)
   setIfPresent(mapped, "vehicle_vin", body.vehicle.vin)
   setIfPresent(mapped, "stock_number", body.vehicle.stockNumber)
-  setIfPresent(mapped, "amount_financed", body.finance.amountFinanced)
   setIfPresent(mapped, "apr", body.finance.apr)
   setIfPresent(mapped, "term_months", body.finance.term)
   setIfPresent(mapped, "monthly_payment", body.finance.monthlyPayment)
@@ -197,10 +254,25 @@ export async function POST(request: Request) {
   setIfPresent(mapped, "lender_id", lenderId)
   mapped.taptosign_lender_name = lenderMapped ? null : (rawLenderName ?? null)
   if (body.coBuyer?.signed !== undefined) mapped.co_buyer_signed = body.coBuyer.signed
+  // payment_method recomputed every sync. The owed amount routes to balance_due
+  // (cash) or amount_financed (financed); both written unconditionally so a
+  // payment_method flip cleans up the unused column (D-flip). funds_cleared is
+  // operator-owned — not touched here.
+  mapped.payment_method = paymentMethod
+  if (paymentMethod === "cash") {
+    mapped.balance_due = owedAmount
+    mapped.amount_financed = null // explicit clear on flip to cash
+  } else {
+    // Financed: only update amount_financed when this sync actually has a value —
+    // a null TaptoSign field must not wipe a RouteOne-sourced amount (D-no-wipe).
+    if (owedAmount != null) mapped.amount_financed = owedAmount
+    mapped.balance_due = null // explicit clear on flip to financed
+  }
 
   if (existing) {
-    const pipeline_state = nextPipelineState(
+    const pipeline_state = nextPipeline(
       existing.pipeline_state as string,
+      paymentMethod,
       body.signed
     )
     const { error } = await supabase
@@ -230,7 +302,7 @@ export async function POST(request: Request) {
       created_by: userId,
       taptosign_deal_id: body.taptosignDealId,
       sold_date: toSoldDate(body.saleDate),
-      pipeline_state: nextPipelineState(null, body.signed),
+      pipeline_state: nextPipeline(null, paymentMethod, body.signed),
     })
     .select("id")
     .single()

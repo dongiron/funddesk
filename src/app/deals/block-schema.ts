@@ -16,6 +16,7 @@ export const BLOCK_TYPES = [
   "wait_bank",
   "bank_issue",
   "lender_hold",
+  "funds_uncleared",
 ] as const
 
 export type BlockType = (typeof BLOCK_TYPES)[number]
@@ -34,6 +35,7 @@ export const BLOCK_TYPE_LABELS: Record<BlockType, string> = {
   wait_bank: "Wait: Bank",
   bank_issue: "Bank issue",
   lender_hold: "Lender hold",
+  funds_uncleared: "Funds: Uncleared",
 }
 
 // Grouped for the Select (SelectGroup + SelectLabel + SelectItem).
@@ -52,6 +54,7 @@ export const BLOCK_TYPE_GROUPS: { label: string; types: BlockType[] }[] = [
     ],
   },
   { label: "Lender", types: ["wait_bank", "bank_issue", "lender_hold"] },
+  { label: "Funds", types: ["funds_uncleared"] },
 ]
 
 // block_type -> short category label ("I fix" / "Chase" / "Lender") for badges.

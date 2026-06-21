@@ -16,7 +16,7 @@ import {
   dealFormSchema,
   toDealInput,
   phoenixToday,
-  FORM_PIPELINE_STATES,
+  formPipelineStates,
   PIPELINE_STATE_LABELS,
   type Deal,
   type DealFormValues,
@@ -465,7 +465,7 @@ export function DealForm({
                         </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
-                        {FORM_PIPELINE_STATES.map((s) => (
+                        {formPipelineStates(deal?.payment_method).map((s) => (
                           <SelectItem key={s} value={s}>
                             {PIPELINE_STATE_LABELS[s]}
                           </SelectItem>

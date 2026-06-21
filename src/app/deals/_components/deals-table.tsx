@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/sheet"
 import { DealForm } from "./deal-form"
 import { RouteoneFundingPanel } from "./funding-panel"
+import { CashPanel } from "./cash-panel"
 import { UnwindDealDialog } from "./unwind-deal-dialog"
 import { BlocksSheet } from "./blocks-sheet"
 import { StipsSheet } from "./stips-sheet"
@@ -249,6 +250,7 @@ export function DealsTable({
               "— lender unmapped" +
               (d.taptosign_lender_name ? ` · ${d.taptosign_lender_name}` : "")
             const blocks = activeBlockCount(d)
+            const isCash = d.payment_method === "cash"
             return (
               <div
                 key={d.id}
@@ -262,13 +264,24 @@ export function DealsTable({
                     {fullName(d)} · {vehicle(d)}
                   </div>
                   <div className="flex items-center gap-1.5">
+                    {isCash && (
+                      <span className="shrink-0 rounded-sm border border-line px-1.5 py-px font-mono text-[9px] uppercase text-fg-secondary">
+                        cash
+                      </span>
+                    )}
                     <span className="truncate font-mono text-[10px] lowercase text-fg-tertiary">
-                      {lenderUnmapped ? (
+                      {isCash ? (
+                        d.balance_due != null ? (
+                          `${usd.format(Number(d.balance_due))} due`
+                        ) : (
+                          "balance —"
+                        )
+                      ) : lenderUnmapped ? (
                         <span className="text-fg-muted italic">{unmappedLabel}</span>
                       ) : (
                         d.lender?.name
                       )}
-                      {meta ? ` · ${meta}` : ""}
+                      {!isCash && meta ? ` · ${meta}` : ""}
                     </span>
                     {d.routeone_funding_status && (
                       <span
@@ -345,7 +358,12 @@ export function DealsTable({
           </SheetHeader>
           {sheetOpen && (
             <>
-              {editingDeal && <RouteoneFundingPanel deal={editingDeal} />}
+              {editingDeal &&
+                (editingDeal.payment_method === "cash" ? (
+                  <CashPanel deal={editingDeal} />
+                ) : (
+                  <RouteoneFundingPanel deal={editingDeal} />
+                ))}
               <DealForm
                 deal={editingDeal}
                 lenders={lenders}

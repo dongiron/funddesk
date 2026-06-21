@@ -37,7 +37,7 @@ export default async function LendersPage() {
   const { data: activeDealRows } = await supabase
     .from("deals")
     .select("lender_id")
-    .not("pipeline_state", "in", "(funded,unwound)")
+    .not("pipeline_state", "in", "(funded,payment_cleared,unwound)")
     .is("deleted_at", null)
     .returns<{ lender_id: string | null }[]>()
   const activeCounts: Record<string, number> = {}

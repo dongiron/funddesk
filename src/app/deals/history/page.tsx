@@ -45,12 +45,15 @@ export default async function DealHistoryPage({
   const visibleTabs: HistoryTab[] = isOwner ? ["unwound", "funded"] : ["funded"]
   const defaultTab: HistoryTab = isOwner ? "unwound" : "funded"
 
+  // Funded tab also holds cleared cash deals (payment_cleared — the cash analog
+  // of funded). Cash deals have no funded_date, so they sort last (nullsFirst:
+  // false) and a date-range cutoff naturally limits them to "all time".
   let fundedQuery = supabase
     .from("deals")
     .select(DEAL_SELECT)
-    .eq("pipeline_state", "funded")
+    .in("pipeline_state", ["funded", "payment_cleared"])
     .is("deleted_at", null)
-    .order("funded_date", { ascending: false })
+    .order("funded_date", { ascending: false, nullsFirst: false })
   if (cutoff) fundedQuery = fundedQuery.gte("funded_date", cutoff)
   const { data: fundedData } = await fundedQuery.returns<Deal[]>()
   const fundedDeals = fundedData ?? []
