@@ -47,8 +47,38 @@
   - **PDF hash caching** — a re-synced deal re-extracts and re-bills the Anthropic call; add a cache key on the PDF hash to skip unchanged PDFs (deferred per the Slice 3.7 plan).
   - **`PdfUrlCompressed` empty on signed deals** — TaptoSign reality, not a bug; the `Base64Pdf → PdfUrlCompressed → SignedPdf → PdfUrl` priority chain falls through correctly.
 
+## Completed since last STATUS.md update (f9c0dc5)
+- **3.1 — Extension multi-scraper refactor.** Generalized the extension to host multiple site scrapers (TaptoSign + RouteOne) behind a shared structure.
+- **3.2 — RouteOne Contract Manager scraper + sync endpoint.** ISOLATED-world DOM scrape of the RouteOne Contract Manager; `POST /api/extensions/routeone/sync` batch-matches each contract onto an existing FundDesk deal (by `routeone_deal_id`, then fuzzy customer name). RouteOne never creates deals.
+- **3.2.1 — RouteOne funding panel + list status indicator.** Per-deal funding panel and a funding-status chip on the deals list.
+- **3.2.2 — Shared fuzzy lender matching + RouteOne canonical writes.** `src/lib/lender-match.ts` (`matchLenderByName`, normalized exact then bidirectional prefix, ambiguous→unmatched); RouteOne owns the funded amount + funding lender + pipeline advance (authoritative, not null-skip).
+- **3.2.3 — Cleanup migration + null-skip + gross/age scrapes.** `20260620000000_cleanup_columns.sql` (adds `signed_at` and more); `setIfPresent` null-skip writer so partial re-syncs don't wipe data; gross/funding-age scrapes.
+- **3.7 — TaptoSign RIC PDF extraction via Claude API.** `POST /api/extensions/taptosign/pdf-extract` extracts signed-contract fields from the PDF via `claude-sonnet-4-6` (base64 document block, raw JSON-schema structured output validated with zod).
+- **3.8.0 — Cash deal workflow.** `payment_method` + `balance_due` + funds-clearing tracking; `CashPanel` UI; `awaiting_payment` / `payment_cleared` pipeline states; `funds_uncleared` block type; cash detection at sync time via composite financed-signals. Migration `20260620000001_cash_deals.sql`.
+- **3.8.1 — CIT section on Triage + /deals drill-down filters.** Full-width "Contracts in transit" section (avg-age / overdue-15+ / critical-30+ cards, aging-bucket table, by-lender breakdown with synthetic Cash-deals row); client-side URL filters on `/deals` (`aging`, `lender_id`, `payment_method`) with removable chips; `revalidatePath("/")`/`"/deals"` in both sync routes. Shared aging helpers in `deal-schema.ts`.
+- **3.8.1.1 — Cash check precedence in CIT bucketing.** `payment_method === "cash"` is tested before the `lender_id` branch so cash deals (legitimately `lender_id=null`) route to the Cash-deals row, not the unmapped-lender bucket. (Already in place; confirmed.)
+- **3.8.1.2 — Sticky `payment_method` on TaptoSign re-sync.** When no positive financed signal is present, preserve the deal's existing classification instead of regressing to cash — fixes financed→cash flips on CUDL credit-union deals that return a null TaptoSign `AssignToLender`.
+
+Shipped in commits up to `cc63c0d`.
+
+### Pending manual DB steps (Supabase SQL editor — Don)
+1. Apply `20260620000001_cash_deals.sql` (adds `payment_method`, `balance_due`, the two new pipeline states, the `funds_uncleared` block type). **Required** — triage + deals pages now `select` these columns and will error/empty without it.
+2. Confirm `20260620000000_cleanup_columns.sql` is applied (provides `signed_at`, used by CIT aging).
+3. Run the cash backfill UPDATE (flips genuinely-cash rows mis-saved as `financed`; cosmetic — fixes the CIT "Cash deals" vs "unmapped lender" bucketing).
+
 ## Next
-**Slice 3 — RouteOne extension.** Bring lender funding-pipeline visibility into FundDesk by scraping RouteOne deal pages, response statuses, and stipulations. Goal: surface where each deal sits with the lender (submitted / approved / conditioned / funded) and the outstanding stipulations, so the operator doesn't have to check RouteOne manually.
+**Slice 3.8.2 — BoS PDF extraction.** Authoritative `payment_method` from the Bill of Sale via the RISC-vs-Cash checkbox — the proper first-sync classification fix (sticky detection in 3.8.1.2 only prevents *re-sync* regression). Already scoped; ready to build once the open D-decision is confirmed.
+
+## Upcoming
+- **3.8.3 — RouteOne Decision Details.** Lender messages + decision history (originally numbered 3.4).
+- **3.9 — Notifications panel.** Left/right Triage split; deferred until 3.8.3 provides a real notification source.
+
+## Deferred / Known Issues
+- **CUDL integration** — parallel to RouteOne for credit-union financing. The 3.8.1.2 composite-signal logic already accommodates it via `existingHasLender`; wire CUDL provenance into `hasFinancedSignals` when it ships.
+- **Vercel production body limit** — 4.5MB serverless request cap vs PDFs up to ~10MB base64 (works on localhost/dev). Resolve before deploy via `vercel.json` config, Supabase Storage staging, or the Anthropic Files API upload path.
+- **`proxy.ts` middleware deprecation** — Next 16 cosmetic warning; rename `src/middleware.ts` → `src/proxy.ts`.
+- **Manual `payment_method` override UI** — revisit only if 3.8.2 BoS extraction proves insufficient for edge cases.
+- **PDF hash caching** — cache on PDF hash so a re-synced deal doesn't re-extract and re-bill the Anthropic call.
 
 ## Future Premium Features (Not in Phase One)
 
