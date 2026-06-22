@@ -215,6 +215,10 @@ export async function POST(request: Request) {
   const taptosignSuggestsFinanced =
     (body.finance.amountFinanced ?? 0) > 0 && hasLenderName
   // Sticky classification (D-sticky): a positive financed signal always wins.
+  // This is the Stage-1 best guess only — the second-stage /bos-extract call
+  // reads the authoritative RISC-vs-Cash checkbox and overwrites payment_method
+  // (D-sticky-relegation), so any sticky-preserved value here is a fallback for
+  // deals whose BoS extraction hasn't run yet.
   // Absent one, preserve the deal's existing payment_method on re-sync rather
   // than regressing to cash — TaptoSign returns a null AssignToLender on plenty
   // of real financed deals (e.g. credit-union deals routed via CUDL, not

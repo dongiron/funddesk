@@ -41,6 +41,15 @@ export function CashPanel({ deal }: { deal: Deal }) {
           <div className="font-mono text-sm text-fg-primary">{money(deal.balance_due)}</div>
         </div>
 
+        {deal.outside_lender_name && (
+          <div className="space-y-0.5">
+            <div className="font-mono text-[10px] lowercase tracking-wider text-fg-tertiary">
+              outside lien holder
+            </div>
+            <div className="text-sm text-fg-primary">{deal.outside_lender_name}</div>
+          </div>
+        )}
+
         <ToggleRow
           label="Funds cleared"
           hint={

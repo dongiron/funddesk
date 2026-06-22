@@ -1,5 +1,6 @@
 import { clearToken, getSettings, setSettings } from "../lib/storage"
 import type {
+  BosExtractResult,
   PdfExtractResult,
   RouteoneSyncPayload,
   RouteoneSyncResult,
@@ -215,26 +216,48 @@ function renderDeal(p: TaptosignDealPayload, raw: RawTaptosignScrape) {
     resultEl.innerHTML = `<p class="ok">Synced ✓ (${result.action}${lenderNote})</p>`
     syncBtn.textContent = "Synced"
 
-    // Stage 2 — AI contract extraction from the signed PDF. Best-effort: a
-    // failure here never undoes the stage-1 sync that already landed.
+    // Stages 2–3 — AI extraction from the signed PDF package. Best-effort: a
+    // failure here never undoes the stage-1 sync that already landed. The same
+    // base64 package feeds both extractors (BoS + RIC).
     const pdfBase64 = await getPdfBase64(raw)
     if (!pdfBase64) {
       setTimeout(() => window.close(), 2000)
       return
     }
 
-    resultEl.innerHTML += `<p class="muted extracting">Extracting contract data…</p>`
-    const extract = (await chrome.runtime.sendMessage({
-      type: "SYNC_PDF_EXTRACT",
+    // Stage 2 — Bill of Sale: authoritative payment_method (RISC vs Cash).
+    resultEl.innerHTML += `<p class="muted extracting">Extracting Bill of Sale…</p>`
+    const bos = (await chrome.runtime.sendMessage({
+      type: "SYNC_BOS_EXTRACT",
       payload: { taptosignDealId: p.taptosignDealId, pdfBase64 },
-    })) as PdfExtractResult
+    })) as BosExtractResult
 
-    if (extract.ok) {
-      const fld = `${extract.fieldsUpdated} field${extract.fieldsUpdated === 1 ? "" : "s"}`
-      resultEl.innerHTML = `<p class="ok">Synced ✓ · contract data extracted (${fld} updated)</p>`
-    } else {
-      resultEl.innerHTML = `<p class="ok">Synced ✓</p><p class="error">contract extraction failed: ${esc(extract.error)}</p>`
+    if (!bos.ok) {
+      resultEl.innerHTML = `<p class="ok">Synced ✓</p><p class="error">Bill of Sale extraction failed: ${esc(bos.error)}</p>`
+      setTimeout(() => window.close(), 3000)
+      return
     }
+
+    let totalFields = bos.fieldsUpdated
+
+    // Stage 3 — RIC financial extraction, only for financed deals.
+    if (bos.paymentMethod === "financed") {
+      resultEl.innerHTML += `<p class="muted extracting">Extracting contract…</p>`
+      const ric = (await chrome.runtime.sendMessage({
+        type: "SYNC_PDF_EXTRACT",
+        payload: { taptosignDealId: p.taptosignDealId, pdfBase64 },
+      })) as PdfExtractResult
+      if (ric.ok) {
+        totalFields += ric.fieldsUpdated
+      } else {
+        resultEl.innerHTML = `<p class="ok">Synced ✓ · ${esc(bos.paymentMethod)}</p><p class="error">contract extraction failed: ${esc(ric.error)}</p>`
+        setTimeout(() => window.close(), 3000)
+        return
+      }
+    }
+
+    const fld = `${totalFields} field${totalFields === 1 ? "" : "s"}`
+    resultEl.innerHTML = `<p class="ok">Synced ✓ · ${esc(bos.paymentMethod)} · done — extracted ${fld}</p>`
     setTimeout(() => window.close(), 3000)
   })
 }

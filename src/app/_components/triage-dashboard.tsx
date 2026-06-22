@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { ChevronDownIcon } from "lucide-react"
 import { BLOCK_TYPE_LABELS, type DealBlock } from "../deals/block-schema"
-import type { Deal } from "../deals/deal-schema"
+import { displayName, type Deal } from "../deals/deal-schema"
 import {
   BlocksSheet,
   type BlocksSheetDeal,
@@ -59,14 +59,18 @@ const usd = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 0,
 })
 
-type Nameish = { customer_first_name: string | null; customer_last_name: string | null }
+type Nameish = {
+  customer_first_name: string | null
+  customer_last_name: string | null
+  customer_business_name?: string | null
+}
 type Vehicleish = {
   vehicle_year: number | null
   vehicle_make: string | null
   vehicle_model: string | null
 }
 function fullName(d: Nameish): string {
-  return [d.customer_first_name, d.customer_last_name].filter(Boolean).join(" ").trim() || "—"
+  return displayName(d)
 }
 function vehicle(d: Vehicleish): string {
   return [d.vehicle_year, d.vehicle_make, d.vehicle_model].filter(Boolean).join(" ").trim() || "—"

@@ -88,15 +88,30 @@ export type PdfExtractResult =
   | { ok: true; fieldsUpdated: number; extracted: Record<string, unknown> }
   | { ok: false; error: string; status: number }
 
+// ── Bill of Sale extraction (authoritative payment_method) ────────────────────
+// Same signed-PDF package as the RIC extraction above; returns the authoritative
+// classification so the popup knows whether to run the RIC stage.
+export type BosExtractPayload = { taptosignDealId: string; pdfBase64: string }
+export type BosExtractResult =
+  | {
+      ok: true
+      fieldsUpdated: number
+      paymentMethod: "financed" | "cash"
+      extracted: Record<string, unknown>
+    }
+  | { ok: false; error: string; status: number }
+
 // ── Message envelopes (popup → background) ────────────────────────────────────
 export type SyncDealMessage = { type: "SYNC_DEAL"; payload: TaptosignDealPayload }
 export type SyncRouteoneMessage = { type: "SYNC_ROUTEONE"; payload: RouteoneSyncPayload }
 export type SyncPdfExtractMessage = { type: "SYNC_PDF_EXTRACT"; payload: PdfExtractPayload }
+export type SyncBosExtractMessage = { type: "SYNC_BOS_EXTRACT"; payload: BosExtractPayload }
 export type TestConnectionMessage = { type: "TEST_CONNECTION" }
 export type BackgroundMessage =
   | SyncDealMessage
   | SyncRouteoneMessage
   | SyncPdfExtractMessage
+  | SyncBosExtractMessage
   | TestConnectionMessage
 
 export type Settings = { token?: string; serverUrl: string }

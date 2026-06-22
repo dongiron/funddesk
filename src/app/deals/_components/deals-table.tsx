@@ -8,6 +8,7 @@ import {
   agingBucket,
   daysSinceSold,
   dealAgeDays,
+  displayName,
   isAgingBucket,
   PIPELINE_STATES,
   PIPELINE_STATE_SHORT,
@@ -48,7 +49,7 @@ const usd = new Intl.NumberFormat("en-US", {
 const money = (v: number | null) => Number(v ?? 0)
 
 function fullName(d: Deal): string {
-  return [d.customer_first_name, d.customer_last_name].filter(Boolean).join(" ").trim() || "—"
+  return displayName(d)
 }
 function vehicle(d: Deal): string {
   return [d.vehicle_year, d.vehicle_make, d.vehicle_model].filter(Boolean).join(" ").trim() || "—"

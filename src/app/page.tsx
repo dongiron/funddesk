@@ -30,7 +30,7 @@ import {
 const ACTIVE_SELECT =
   "id, customer_first_name, customer_last_name, vehicle_year, vehicle_make, " +
   "vehicle_model, lender_id, pipeline_state, sold_date, amount_financed, " +
-  "payment_method, balance_due, signed_at, created_at, " +
+  "payment_method, balance_due, signed_at, created_at, customer_business_name, " +
   "stips_required, stips_received, lender:lender_id(name, overdue_threshold_days)"
 
 type ActiveDealRow = {
@@ -48,6 +48,7 @@ type ActiveDealRow = {
   balance_due: number | null
   signed_at: string | null
   created_at: string
+  customer_business_name: string | null
   stips_required: string[]
   stips_received: string[]
   lender: { name: string; overdue_threshold_days: number | null } | null
@@ -201,6 +202,7 @@ export default async function Home() {
       id: d.id,
       customer_first_name: d.customer_first_name,
       customer_last_name: d.customer_last_name,
+      customer_business_name: d.customer_business_name,
       vehicle_year: d.vehicle_year,
       vehicle_make: d.vehicle_make,
       vehicle_model: d.vehicle_model,

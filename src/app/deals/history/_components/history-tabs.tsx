@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import type { Deal } from "../../deal-schema"
+import { displayName, type Deal } from "../../deal-schema"
 import { StatePill } from "../../_components/state-pill"
 import { DealForm } from "../../_components/deal-form"
 import { CashPanel } from "../../_components/cash-panel"
@@ -24,7 +24,7 @@ const usd = new Intl.NumberFormat("en-US", {
 })
 
 function fullName(d: Deal): string {
-  return [d.customer_first_name, d.customer_last_name].filter(Boolean).join(" ").trim() || "—"
+  return displayName(d)
 }
 function vehicle(d: Deal): string {
   return [d.vehicle_year, d.vehicle_make, d.vehicle_model].filter(Boolean).join(" ").trim() || "—"

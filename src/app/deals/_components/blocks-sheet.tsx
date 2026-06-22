@@ -25,6 +25,7 @@ export type BlocksSheetDeal = {
   id: string
   customer_first_name: string | null
   customer_last_name: string | null
+  customer_business_name?: string | null
   vehicle_year: number | null
   vehicle_make: string | null
   vehicle_model: string | null

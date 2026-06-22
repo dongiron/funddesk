@@ -275,6 +275,8 @@ export type Deal = {
   funds_cleared_at: string | null
   signed_at: string | null
   created_at: string
+  customer_business_name: string | null
+  outside_lender_name: string | null
 }
 
 // Minimal lender shape the form needs (Select + create-time pre-fill).
@@ -305,7 +307,7 @@ export const DEAL_SELECT =
   "routeone_amount_financed, routeone_reserve_amount, routeone_net_proceeds, " +
   "routeone_contract_date, routeone_is_dsp_originated, routeone_last_synced_at, " +
   "payment_method, balance_due, funds_cleared, funds_cleared_at, " +
-  "signed_at, created_at, " +
+  "signed_at, created_at, customer_business_name, outside_lender_name, " +
   "lender:lender_id(name, overdue_threshold_days)"
 
 // ── History date-range filter ────────────────────────────────────────────────
@@ -373,6 +375,22 @@ export function agingBucket(days: number): AgingBucket {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+// Display name for a deal. A business buyer's company name takes precedence
+// (the individual fields still carry the contact person as a proxy from BoS
+// extraction); otherwise "First Last", else an em dash. Shared by the deals
+// table, triage, and history views.
+export function displayName(d: {
+  customer_business_name?: string | null
+  customer_first_name: string | null
+  customer_last_name: string | null
+}): string {
+  const biz = d.customer_business_name?.trim()
+  if (biz) return biz
+  return (
+    [d.customer_first_name, d.customer_last_name].filter(Boolean).join(" ").trim() || "—"
+  )
+}
 
 // Today's date in America/Phoenix as YYYY-MM-DD. en-CA formats as YYYY-MM-DD.
 // Used on both client (form default) and server (action fallback) per the

@@ -1,5 +1,7 @@
 import { getSettings } from "./storage"
 import type {
+  BosExtractPayload,
+  BosExtractResult,
   PdfExtractPayload,
   PdfExtractResult,
   RouteoneSyncPayload,
@@ -150,6 +152,54 @@ export async function syncPdfExtract(
 
   // Surface the server's specific message (404 deal-not-found, 413 too-large, …)
   // when present; fall back to the generic status description.
+  let message = describeStatus(res.status)
+  try {
+    const body = (await res.json()) as { error?: string }
+    if (body?.error) message = body.error
+  } catch {
+    // keep the fallback
+  }
+  return { ok: false, error: message, status: res.status }
+}
+
+export async function syncBosExtract(
+  payload: BosExtractPayload
+): Promise<BosExtractResult> {
+  const { token, serverUrl } = await getSettings()
+  if (!token) return { ok: false, error: "No token configured.", status: 0 }
+
+  let res: Response
+  try {
+    res = await fetch(`${normalizeBase(serverUrl)}/api/extensions/taptosign/bos-extract`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    })
+  } catch {
+    return {
+      ok: false,
+      error: "Couldn't reach FundDesk. Check the server URL and that it's running.",
+      status: 0,
+    }
+  }
+
+  if (res.ok) {
+    try {
+      const data = (await res.json()) as {
+        fieldsUpdated: number
+        paymentMethod: "financed" | "cash"
+        extracted: Record<string, unknown>
+      }
+      return { ok: true, ...data }
+    } catch {
+      return { ok: false, error: "FundDesk returned an unreadable response.", status: res.status }
+    }
+  }
+
+  // Surface the server's specific message (404 deal-not-found, 413 too-large, …).
   let message = describeStatus(res.status)
   try {
     const body = (await res.json()) as { error?: string }

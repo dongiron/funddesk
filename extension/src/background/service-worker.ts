@@ -1,6 +1,13 @@
-import { syncDeal, syncPdfExtract, syncRouteoneBatch, testConnection } from "../lib/api"
+import {
+  syncBosExtract,
+  syncDeal,
+  syncPdfExtract,
+  syncRouteoneBatch,
+  testConnection,
+} from "../lib/api"
 import type {
   BackgroundMessage,
+  BosExtractResult,
   PdfExtractResult,
   RouteoneSyncResult,
   SyncResult,
@@ -15,7 +22,12 @@ chrome.runtime.onMessage.addListener(
     message: BackgroundMessage,
     _sender,
     sendResponse: (
-      r: SyncResult | RouteoneSyncResult | PdfExtractResult | TestResult
+      r:
+        | SyncResult
+        | RouteoneSyncResult
+        | PdfExtractResult
+        | BosExtractResult
+        | TestResult
     ) => void
   ) => {
     if (message?.type === "SYNC_DEAL") {
@@ -28,6 +40,10 @@ chrome.runtime.onMessage.addListener(
     }
     if (message?.type === "SYNC_PDF_EXTRACT") {
       syncPdfExtract(message.payload).then(sendResponse)
+      return true
+    }
+    if (message?.type === "SYNC_BOS_EXTRACT") {
+      syncBosExtract(message.payload).then(sendResponse)
       return true
     }
     if (message?.type === "TEST_CONNECTION") {
