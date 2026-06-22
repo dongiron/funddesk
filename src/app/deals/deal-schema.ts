@@ -273,6 +273,8 @@ export type Deal = {
   balance_due: number | null
   funds_cleared: boolean
   funds_cleared_at: string | null
+  signed_at: string | null
+  created_at: string
 }
 
 // Minimal lender shape the form needs (Select + create-time pre-fill).
@@ -303,6 +305,7 @@ export const DEAL_SELECT =
   "routeone_amount_financed, routeone_reserve_amount, routeone_net_proceeds, " +
   "routeone_contract_date, routeone_is_dsp_originated, routeone_last_synced_at, " +
   "payment_method, balance_due, funds_cleared, funds_cleared_at, " +
+  "signed_at, created_at, " +
   "lender:lender_id(name, overdue_threshold_days)"
 
 // ── History date-range filter ────────────────────────────────────────────────
@@ -328,6 +331,45 @@ export function rangeStartDate(range: RangeValue): string | null {
     range === "30d" ? 30 : range === "90d" ? 90 : range === "180d" ? 180 : 365
   const ms = Date.parse(phoenixToday()) - days * 86_400_000
   return new Date(ms).toISOString().slice(0, 10)
+}
+
+// ── Contract aging (CIT) ─────────────────────────────────────────────────────
+
+// Aging buckets for contracts-in-transit. Drill-down query param values; "30+"
+// is URL-encoded when built into an href (see encodeURIComponent at call sites).
+export const AGING_BUCKETS = ["0-7", "8-14", "15-30", "30+"] as const
+export type AgingBucket = (typeof AGING_BUCKETS)[number]
+
+export const AGING_LABELS: Record<AgingBucket, string> = {
+  "0-7": "0–7 days",
+  "8-14": "8–14 days",
+  "15-30": "15–30 days",
+  "30+": "30+ days",
+}
+
+export function isAgingBucket(v: string | null | undefined): v is AgingBucket {
+  return !!v && (AGING_BUCKETS as readonly string[]).includes(v)
+}
+
+// Whole days a contract has been in flight, measured from when it was signed
+// (falling back to row creation if signed_at is null — D-aging-source). Floors
+// at 0; bad/missing timestamps read as 0 days.
+export function dealAgeDays(
+  signedAt: string | null | undefined,
+  createdAt: string | null | undefined
+): number {
+  const src = signedAt ?? createdAt
+  if (!src) return 0
+  const t = Date.parse(src)
+  if (Number.isNaN(t)) return 0
+  return Math.max(0, Math.floor((Date.now() - t) / 86_400_000))
+}
+
+export function agingBucket(days: number): AgingBucket {
+  if (days <= 7) return "0-7"
+  if (days <= 14) return "8-14"
+  if (days <= 30) return "15-30"
+  return "30+"
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

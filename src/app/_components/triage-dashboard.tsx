@@ -9,6 +9,7 @@ import {
   type BlocksSheetDeal,
 } from "../deals/_components/blocks-sheet"
 import { DealForm } from "../deals/_components/deal-form"
+import { CitSection, type CitData } from "../deals/_components/cit-section"
 import {
   Sheet,
   SheetContent,
@@ -233,6 +234,7 @@ export function TriageDashboard({
   action,
   clean,
   funded,
+  cit,
   currentUserRole,
   userNames,
 }: {
@@ -243,6 +245,7 @@ export function TriageDashboard({
   action: ActiveSection
   clean: ActiveSection
   funded: FundedSection
+  cit: CitData
   currentUserRole: string
   userNames: Record<string, string>
 }) {
@@ -447,6 +450,8 @@ export function TriageDashboard({
           )}
         </div>
       )}
+
+      <CitSection cit={cit} />
 
       <BlocksSheet
         deal={blocksRow?.deal ?? null}

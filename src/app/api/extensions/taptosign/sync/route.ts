@@ -12,6 +12,7 @@
 // ============================================================
 
 import { NextResponse } from "next/server"
+import { revalidatePath } from "next/cache"
 import { z } from "zod"
 import { validateExtensionToken } from "@/lib/extension-tokens"
 import { createServiceRoleClient } from "@/lib/supabase/service"
@@ -175,7 +176,7 @@ export async function POST(request: Request) {
   const { data: existingData } = await supabase
     .from("deals")
     .select(
-      "id, pipeline_state, lender_id, amount_financed, " +
+      "id, pipeline_state, payment_method, lender_id, amount_financed, " +
         "routeone_funding_lender_name, routeone_deal_id, routeone_contract_number"
     )
     .eq("dealership_id", dealershipId)
@@ -185,6 +186,7 @@ export async function POST(request: Request) {
   const existing = existingData as {
     id: string
     pipeline_state: string
+    payment_method: string
     lender_id: string | null
     amount_financed: number | null
     routeone_funding_lender_name: string | null
@@ -192,11 +194,13 @@ export async function POST(request: Request) {
     routeone_contract_number: string | null
   } | null
 
-  // 5. Cash detection (recomputed every sync). ANY prior financed signal from ANY
-  //    source is authoritative — a deal is only cash when financed signals are
-  //    absent everywhere (D-routeone-authoritative). This overrides TaptoSign's
-  //    AssignToLender null gap. Otherwise financed iff a financed amount AND a
-  //    named lender this sync; else cash.
+  // 5. Cash detection (recomputed every sync). ANY financed signal from ANY
+  //    source — RouteOne provenance, an existing lender, an existing financed
+  //    amount, or a financed amount + named lender this sync — forces financed
+  //    (D-routeone-authoritative), overriding TaptoSign's AssignToLender null
+  //    gap. When no positive signal is present the classification is sticky
+  //    (D-sticky, below): preserve the existing value, defaulting to cash only
+  //    on a first sync.
   const hasRouteoneData = !!(
     existing?.routeone_funding_lender_name ||
     existing?.routeone_deal_id ||
@@ -210,8 +214,21 @@ export async function POST(request: Request) {
   const hasLenderName = !!rawLenderName
   const taptosignSuggestsFinanced =
     (body.finance.amountFinanced ?? 0) > 0 && hasLenderName
-  const paymentMethod: "financed" | "cash" =
-    taptosignSuggestsFinanced || hasFinancedSignals ? "financed" : "cash"
+  // Sticky classification (D-sticky): a positive financed signal always wins.
+  // Absent one, preserve the deal's existing payment_method on re-sync rather
+  // than regressing to cash — TaptoSign returns a null AssignToLender on plenty
+  // of real financed deals (e.g. credit-union deals routed via CUDL, not
+  // RouteOne), so silence is not evidence of cash. Only a brand-new deal with no
+  // signals anywhere defaults to cash. (Proper first-sync fix lands in 3.8.2 via
+  // BoS RISC-vs-Cash extraction.)
+  let paymentMethod: "financed" | "cash"
+  if (taptosignSuggestsFinanced || hasFinancedSignals) {
+    paymentMethod = "financed"
+  } else if (existing) {
+    paymentMethod = existing.payment_method === "cash" ? "cash" : "financed"
+  } else {
+    paymentMethod = "cash"
+  }
   // TaptoSign's AmountFinanced carries the owed amount generically; fall back to
   // sale_price - down_payment. Routed to balance_due (cash) or amount_financed
   // (financed) below.
@@ -287,6 +304,8 @@ export async function POST(request: Request) {
         { status: 500 }
       )
     }
+    revalidatePath("/")
+    revalidatePath("/deals")
     return NextResponse.json({
       dealId: existing.id as string,
       action: "updated" as const,
@@ -314,6 +333,8 @@ export async function POST(request: Request) {
     )
   }
 
+  revalidatePath("/")
+  revalidatePath("/deals")
   return NextResponse.json({
     dealId: created.id as string,
     action: "created" as const,

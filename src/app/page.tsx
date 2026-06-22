@@ -1,13 +1,22 @@
 import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import {
+  AGING_BUCKETS,
   DEAL_SELECT,
+  agingBucket,
   daysSinceSold,
+  dealAgeDays,
   phoenixToday,
+  type AgingBucket,
   type Deal,
 } from "./deals/deal-schema"
 import { BLOCK_SELECT, type DealBlock } from "./deals/block-schema"
 import type { BlocksSheetDeal } from "./deals/_components/blocks-sheet"
+import type {
+  CitAgingRow,
+  CitData,
+  CitLenderRow,
+} from "./deals/_components/cit-section"
 import {
   TriageDashboard,
   type ActiveRow,
@@ -21,6 +30,7 @@ import {
 const ACTIVE_SELECT =
   "id, customer_first_name, customer_last_name, vehicle_year, vehicle_make, " +
   "vehicle_model, lender_id, pipeline_state, sold_date, amount_financed, " +
+  "payment_method, balance_due, signed_at, created_at, " +
   "stips_required, stips_received, lender:lender_id(name, overdue_threshold_days)"
 
 type ActiveDealRow = {
@@ -34,6 +44,10 @@ type ActiveDealRow = {
   pipeline_state: string
   sold_date: string
   amount_financed: number | null
+  payment_method: string
+  balance_due: number | null
+  signed_at: string | null
+  created_at: string
   stips_required: string[]
   stips_received: string[]
   lender: { name: string; overdue_threshold_days: number | null } | null
@@ -238,6 +252,81 @@ export default async function Home() {
     total: fundedRows.reduce((s, r) => s + money(r.amountFinanced), 0),
   }
 
+  // ── Contracts-in-transit (CIT) aggregates ──────────────────────────────────
+  // Aging is measured from signed_at (falling back to created_at). Per-deal
+  // amount is balance_due for cash, amount_financed otherwise. "overdue" = 15+
+  // days; "critical" = 30+ days (the danger bucket). Cash deals collapse into a
+  // single synthetic lender row.
+  const agingAgg: Record<AgingBucket, { count: number; amount: number }> = {
+    "0-7": { count: 0, amount: 0 },
+    "8-14": { count: 0, amount: 0 },
+    "15-30": { count: 0, amount: 0 },
+    "30+": { count: 0, amount: 0 },
+  }
+  const lenderAgg = new Map<
+    string,
+    { label: string; href: string | null; count: number; amount: number; oldest: number }
+  >()
+  let citAmount = 0
+  let citAgeSum = 0
+  let citOverdue = 0
+  let citCritical = 0
+
+  for (const d of activeDeals) {
+    const amount = money(d.payment_method === "cash" ? d.balance_due : d.amount_financed)
+    const age = dealAgeDays(d.signed_at, d.created_at)
+    const bucket = agingBucket(age)
+
+    citAmount += amount
+    citAgeSum += age
+    if (age >= 15) citOverdue += amount
+    if (age > 30) citCritical += amount
+    agingAgg[bucket].count++
+    agingAgg[bucket].amount += amount
+
+    let key: string
+    let label: string
+    let href: string | null
+    if (d.payment_method === "cash") {
+      key = "__cash__"
+      label = "Cash deals"
+      href = "/deals?payment_method=cash"
+    } else if (d.lender_id) {
+      key = d.lender_id
+      label = d.lender?.name ?? "—"
+      href = `/deals?lender_id=${d.lender_id}`
+    } else {
+      key = "__unmapped__"
+      label = "— unmapped lender"
+      href = null
+    }
+    const row = lenderAgg.get(key) ?? { label, href, count: 0, amount: 0, oldest: 0 }
+    row.count++
+    row.amount += amount
+    row.oldest = Math.max(row.oldest, age)
+    lenderAgg.set(key, row)
+  }
+
+  const citAging: CitAgingRow[] = AGING_BUCKETS.map((bucket) => ({
+    bucket,
+    count: agingAgg[bucket].count,
+    amount: agingAgg[bucket].amount,
+  }))
+  const citLenders: CitLenderRow[] = [...lenderAgg.entries()]
+    .map(([key, v]) => ({ key, ...v }))
+    .sort((a, b) => b.amount - a.amount)
+
+  const cit: CitData = {
+    generatedAt: new Date().toISOString(),
+    totalCount: activeDeals.length,
+    totalAmount: citAmount,
+    avgAge: activeDeals.length ? Math.round(citAgeSum / activeDeals.length) : 0,
+    overdueAmount: citOverdue,
+    criticalAmount: citCritical,
+    aging: citAging,
+    lenders: citLenders,
+  }
+
   const metrics: TriageMetrics = {
     inTransit: { total: inTransitTotal, count: inTransitCount },
     overdue: {
@@ -265,6 +354,7 @@ export default async function Home() {
           action={toSection(actionRows)}
           clean={toSection(cleanRows)}
           funded={funded}
+          cit={cit}
           currentUserRole={currentUserRole}
           userNames={userNames}
         />

@@ -17,6 +17,7 @@
 // ============================================================
 
 import { NextResponse } from "next/server"
+import { revalidatePath } from "next/cache"
 import { z } from "zod"
 import { validateExtensionToken } from "@/lib/extension-tokens"
 import { createServiceRoleClient } from "@/lib/supabase/service"
@@ -267,6 +268,12 @@ export async function POST(request: Request) {
     } else {
       matched++
     }
+  }
+
+  // Refresh the triage CIT section + deals list to reflect synced funding state.
+  if (matched > 0) {
+    revalidatePath("/")
+    revalidatePath("/deals")
   }
 
   return NextResponse.json({

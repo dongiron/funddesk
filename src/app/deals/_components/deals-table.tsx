@@ -1,9 +1,14 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { CheckIcon, MoreHorizontalIcon } from "lucide-react"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
+import { CheckIcon, MoreHorizontalIcon, XIcon } from "lucide-react"
 import {
+  AGING_LABELS,
+  agingBucket,
   daysSinceSold,
+  dealAgeDays,
+  isAgingBucket,
   PIPELINE_STATES,
   PIPELINE_STATE_SHORT,
   type Deal,
@@ -67,6 +72,22 @@ const CHIP =
   "rounded-md border border-line bg-surface px-3 py-2 font-mono text-xs tracking-wide text-fg-secondary outline-none transition-colors hover:text-fg-primary"
 const GRID = "grid grid-cols-[132px_1fr_104px_56px_44px_36px] items-center gap-3"
 
+function DrillChip({ label, onClear }: { label: string; onClear: () => void }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-md border border-gold/40 bg-surface px-3 py-1.5 font-mono text-xs tracking-wide text-gold">
+      {label}
+      <button
+        type="button"
+        onClick={onClear}
+        aria-label={`Clear ${label} filter`}
+        className="text-gold/70 outline-none transition-colors hover:text-gold"
+      >
+        <XIcon className="size-3" />
+      </button>
+    </span>
+  )
+}
+
 type Sort = "sold_desc" | "amount_desc" | "customer_asc"
 const SORTS: { key: Sort; label: string }[] = [
   { key: "sold_desc", label: "Sold date (newest)" },
@@ -94,6 +115,23 @@ export function DealsTable({
   const [stateFilter, setStateFilter] = useState<string[]>([])
   const [lenderFilter, setLenderFilter] = useState<string[]>([])
   const [sort, setSort] = useState<Sort>("sold_desc")
+
+  // Drill-down filters arrive as URL params from the triage CIT section. They
+  // compose with the in-page chips above and are cleared via the removable chip.
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const agingParam = searchParams.get("aging")
+  const drillAging = isAgingBucket(agingParam) ? agingParam : null
+  const drillLenderId = searchParams.get("lender_id")
+  const drillPayment = searchParams.get("payment_method")
+
+  function clearDrill(...keys: string[]) {
+    const params = new URLSearchParams(searchParams.toString())
+    for (const k of keys) params.delete(k)
+    const qs = params.toString()
+    router.push(qs ? `${pathname}?${qs}` : pathname)
+  }
 
   const sheetOpen = editing !== null
   const editingDeal = editing === "create" ? undefined : (editing ?? undefined)
@@ -129,6 +167,10 @@ export function DealsTable({
         if (stateFilter.length && !stateFilter.includes(d.pipeline_state)) return false
         if (lenderFilter.length && (!d.lender_id || !lenderFilter.includes(d.lender_id)))
           return false
+        if (drillAging && agingBucket(dealAgeDays(d.signed_at, d.created_at)) !== drillAging)
+          return false
+        if (drillLenderId && d.lender_id !== drillLenderId) return false
+        if (drillPayment && d.payment_method !== drillPayment) return false
         return true
       })
       .sort((a, b) => {
@@ -136,7 +178,7 @@ export function DealsTable({
         if (sort === "customer_asc") return fullName(a).localeCompare(fullName(b))
         return b.sold_date.localeCompare(a.sold_date)
       })
-  }, [deals, search, stateFilter, lenderFilter, sort])
+  }, [deals, search, stateFilter, lenderFilter, sort, drillAging, drillLenderId, drillPayment])
 
   const activeCount = deals.length
   const totalActiveAmount = deals.reduce((s, d) => s + money(d.amount_financed), 0)
@@ -219,6 +261,32 @@ export function DealsTable({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
+      {/* Drill-down chips (from the triage CIT section) */}
+      {(drillAging || drillLenderId || drillPayment) && (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          {drillAging && (
+            <DrillChip
+              label={`age: ${AGING_LABELS[drillAging]}`}
+              onClear={() => clearDrill("aging")}
+            />
+          )}
+          {drillLenderId && (
+            <DrillChip
+              label={`lender: ${
+                deals.find((d) => d.lender_id === drillLenderId)?.lender?.name ?? "—"
+              }`}
+              onClear={() => clearDrill("lender_id")}
+            />
+          )}
+          {drillPayment && (
+            <DrillChip
+              label={drillPayment === "cash" ? "cash deals" : `payment: ${drillPayment}`}
+              onClear={() => clearDrill("payment_method")}
+            />
+          )}
+        </div>
+      )}
 
       {/* Table */}
       {filtered.length === 0 ? (
