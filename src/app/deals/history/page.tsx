@@ -1,10 +1,12 @@
 import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import {
+  DEAL_EVENT_SELECT,
   DEAL_SELECT,
   isRangeValue,
   rangeStartDate,
   type Deal,
+  type DealEvent,
   type RangeValue,
 } from "../deal-schema"
 import { DateRangeFilter } from "./_components/date-range-filter"
@@ -71,6 +73,30 @@ export default async function DealHistoryPage({
     unwoundDeals = data ?? []
   }
 
+  // Read-only event timelines for the detail sheet, grouped per deal.
+  const historyIds = [...fundedDeals, ...unwoundDeals].map((d) => d.id)
+  const eventsByDeal: Record<string, DealEvent[]> = {}
+  const userNames: Record<string, string> = {}
+  if (historyIds.length > 0) {
+    const { data: events } = await supabase
+      .from("deal_events")
+      .select(DEAL_EVENT_SELECT)
+      .in("deal_id", historyIds)
+      .order("event_at", { ascending: false })
+      .returns<DealEvent[]>()
+    for (const e of events ?? []) {
+      ;(eventsByDeal[e.deal_id] ??= []).push(e)
+    }
+    const { data: dealershipUsers } = await supabase
+      .from("users")
+      .select("id, full_name, email")
+      .is("deleted_at", null)
+      .returns<{ id: string; full_name: string | null; email: string }[]>()
+    for (const u of dealershipUsers ?? []) {
+      userNames[u.id] = u.full_name || u.email
+    }
+  }
+
   return (
     <div className="flex-1 px-6 py-8">
       <div className="mx-auto max-w-7xl">
@@ -96,6 +122,8 @@ export default async function DealHistoryPage({
           defaultTab={defaultTab}
           fundedDeals={fundedDeals}
           unwoundDeals={unwoundDeals}
+          eventsByDeal={eventsByDeal}
+          userNames={userNames}
         />
       </div>
     </div>

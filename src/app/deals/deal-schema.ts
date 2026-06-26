@@ -277,6 +277,8 @@ export type Deal = {
   created_at: string
   customer_business_name: string | null
   outside_lender_name: string | null
+  funding_status: string | null
+  funding_status_updated_at: string | null
 }
 
 // Minimal lender shape the form needs (Select + create-time pre-fill).
@@ -308,7 +310,78 @@ export const DEAL_SELECT =
   "routeone_contract_date, routeone_is_dsp_originated, routeone_last_synced_at, " +
   "payment_method, balance_due, funds_cleared, funds_cleared_at, " +
   "signed_at, created_at, customer_business_name, outside_lender_name, " +
+  "funding_status, funding_status_updated_at, " +
   "lender:lender_id(name, overdue_threshold_days)"
+
+// ── Deal events (audit trail) ────────────────────────────────────────────────
+
+export type DealEventType =
+  | "signed"
+  | "contract_submitted"
+  | "contract_returned"
+  | "booked"
+  | "funded"
+  | "manual_note"
+  | "stip_received"
+
+export type DealEventSource =
+  | "taptosign_sync"
+  | "routeone_contract_manager"
+  | "routeone_decision_summary"
+  | "manual"
+  | "system"
+
+export const EVENT_TYPE_LABELS: Record<DealEventType, string> = {
+  signed: "Signed",
+  contract_submitted: "Contract submitted",
+  contract_returned: "Contract returned",
+  booked: "Booked",
+  funded: "Funded",
+  manual_note: "Note",
+  stip_received: "Stip received",
+}
+
+export const EVENT_SOURCE_LABELS: Record<DealEventSource, string> = {
+  taptosign_sync: "taptosign",
+  routeone_contract_manager: "routeone",
+  routeone_decision_summary: "routeone",
+  manual: "manual",
+  system: "system",
+}
+
+// Event types a user may create by hand (D-manual-events-scope). System event
+// types stay system-only.
+export const MANUAL_EVENT_TYPES: DealEventType[] = ["manual_note", "stip_received"]
+
+export type DealEvent = {
+  id: string
+  deal_id: string
+  event_type: string
+  source: string
+  event_at: string
+  description: string | null
+  created_by: string | null
+}
+
+export const DEAL_EVENT_SELECT =
+  "id, deal_id, event_type, source, event_at, description, created_by"
+
+// ── Funding status pill ──────────────────────────────────────────────────────
+
+export const FUNDING_STATUS_LABELS: Record<"clean" | "returned" | "rejected", string> = {
+  clean: "Clean",
+  returned: "Returned",
+  rejected: "Rejected",
+}
+
+// Reuses the pipeline PillVariant palette: clean=green, returned=gold,
+// rejected=red. null when the deal has no funding status yet.
+export function fundingStatusPillVariant(status: string | null): PillVariant | null {
+  if (status === "clean") return "green"
+  if (status === "returned") return "gold"
+  if (status === "rejected") return "red"
+  return null
+}
 
 // ── History date-range filter ────────────────────────────────────────────────
 export const RANGE_OPTIONS = [

@@ -18,6 +18,7 @@ import { validateExtensionToken } from "@/lib/extension-tokens"
 import { createServiceRoleClient } from "@/lib/supabase/service"
 import { matchLenderByName, type LenderRow } from "@/lib/lender-match"
 import { setIfPresent } from "@/lib/sync-helpers"
+import { recordDealEvent } from "@/lib/deal-events"
 import { phoenixToday } from "@/app/deals/deal-schema"
 
 // States from which a freshly-signed deal advances to "ready_to_send". A deal
@@ -308,6 +309,7 @@ export async function POST(request: Request) {
         { status: 500 }
       )
     }
+    await emitSignedEvent(supabase, existing.id as string, dealershipId, userId, body)
     revalidatePath("/")
     revalidatePath("/deals")
     return NextResponse.json({
@@ -337,11 +339,36 @@ export async function POST(request: Request) {
     )
   }
 
+  await emitSignedEvent(supabase, created.id as string, dealershipId, userId, body)
   revalidatePath("/")
   revalidatePath("/deals")
   return NextResponse.json({
     dealId: created.id as string,
     action: "created" as const,
     lenderMapped,
+  })
+}
+
+// Record a 'signed' deal event when the package reports a buyer signature with a
+// parseable date. Idempotent via the externalId — re-syncs don't duplicate it.
+async function emitSignedEvent(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  dealId: string,
+  dealershipId: string,
+  userId: string,
+  body: z.infer<typeof syncSchema>
+): Promise<void> {
+  if (!body.signed) return
+  const signedAt = toTimestamp(body.signedAt)
+  if (!signedAt) return
+  await recordDealEvent({
+    supabase,
+    dealId,
+    dealershipId,
+    eventType: "signed",
+    source: "taptosign_sync",
+    eventAt: signedAt,
+    externalId: `taptosign:${body.taptosignDealId}:signed`,
+    createdBy: userId,
   })
 }

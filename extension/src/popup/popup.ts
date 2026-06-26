@@ -1,6 +1,8 @@
 import { clearToken, getSettings, setSettings } from "../lib/storage"
 import type {
   BosExtractResult,
+  DecisionSummaryPayload,
+  DecisionSummaryResult,
   PdfExtractResult,
   RouteoneSyncPayload,
   RouteoneSyncResult,
@@ -15,7 +17,7 @@ import {
   mapScrape,
   type RawTaptosignScrape,
 } from "../scrapers/taptosign"
-import { getRouteoneScrape } from "../scrapers/routeone"
+import { getDecisionSummaryScrape, getRouteoneScrape } from "../scrapers/routeone"
 
 const app = document.getElementById("app") as HTMLElement
 let forceSettings = false
@@ -325,6 +327,61 @@ function renderRouteoneBatch(payload: RouteoneSyncPayload) {
   })
 }
 
+// ── State 3 (RouteOne) — Decision Summary booked/funded capture ───────────────
+function renderDecisionSummary(payload: DecisionSummaryPayload) {
+  const n = payload.decisions.length
+  const applicant = payload.applicant?.trim() || "—"
+  const preview = payload.decisions
+    .slice(0, 6)
+    .map(
+      (d) =>
+        `<div class="r1-row"><span class="r1-name">#${d.decisionNumber} ${esc(d.statusRaw)}</span><span class="pv-sub mono">${esc(d.eventAt.slice(0, 10))}</span></div>`
+    )
+    .join("")
+
+  app.innerHTML = `
+    ${header("decision summary")}
+    <div class="r1-title">${esc(applicant)}</div>
+    <div class="pv-sub mono">${n} booked/funded decision${n === 1 ? "" : "s"}</div>
+    <div class="preview">${preview}</div>
+    <button id="sync" class="btn-gold btn-full">Sync to FundDesk</button>
+    <div id="result"></div>
+    ${settingsLink()}
+  `
+  wireSettingsLink()
+
+  const syncBtn = document.getElementById("sync") as HTMLButtonElement
+  const resultEl = document.getElementById("result") as HTMLElement
+
+  syncBtn.addEventListener("click", async () => {
+    syncBtn.disabled = true
+    syncBtn.textContent = "Syncing…"
+    resultEl.innerHTML = ""
+
+    const result = (await chrome.runtime.sendMessage({
+      type: "SYNC_DECISION_SUMMARY",
+      payload,
+    })) as DecisionSummaryResult
+
+    if (!result.ok) {
+      resultEl.innerHTML = `<p class="error">${esc(result.error)}</p>`
+      syncBtn.textContent = "Sync to FundDesk"
+      syncBtn.disabled = false
+      return
+    }
+    if (result.matched === 0) {
+      resultEl.innerHTML = `<p class="error">No matching deal found for ${esc(applicant)}.</p>`
+      syncBtn.textContent = "Sync to FundDesk"
+      syncBtn.disabled = false
+      return
+    }
+    const ev = `${result.inserted} funding event${result.inserted === 1 ? "" : "s"}`
+    resultEl.innerHTML = `<p class="ok">Captured ${ev} ✓</p>`
+    syncBtn.textContent = "Synced"
+    setTimeout(() => window.close(), 3000)
+  })
+}
+
 // ── Boot ──────────────────────────────────────────────────────────────────────
 async function render() {
   const settings = await getSettings()
@@ -340,9 +397,16 @@ async function render() {
     if (payload && raw) renderDeal(payload, raw)
     else renderConnected("Open a TaptoSign deal page to sync.")
   } else if (site === "routeone") {
-    const batch = await getRouteoneScrape()
-    if (batch && batch.contracts.length > 0) renderRouteoneBatch(batch)
-    else renderConnected("Open RouteOne Contract Manager to sync.")
+    // Decision Summary and Contract Manager are both routeone.net; each scraper
+    // self-detects via its frame/title guard. Try Decision Summary first.
+    const decisions = await getDecisionSummaryScrape()
+    if (decisions && decisions.decisions.length > 0) {
+      renderDecisionSummary(decisions)
+    } else {
+      const batch = await getRouteoneScrape()
+      if (batch && batch.contracts.length > 0) renderRouteoneBatch(batch)
+      else renderConnected("Open RouteOne Contract Manager or a Decision Summary to sync.")
+    }
   } else {
     renderConnected("Open a TaptoSign deal page to sync.")
   }

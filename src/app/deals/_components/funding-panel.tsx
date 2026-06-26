@@ -1,6 +1,7 @@
 import type { ReactNode } from "react"
 import { relativeTime } from "../block-schema"
 import { FormSection } from "@/components/ui/form-section"
+import { FundingStatusPill } from "./state-pill"
 import type { Deal } from "../deal-schema"
 
 const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" })
@@ -67,6 +68,20 @@ export function RouteoneFundingPanel({ deal }: { deal: Deal }) {
             </Cell>
           </div>
         </div>
+
+        {deal.funding_status && (
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-[10px] lowercase tracking-wider text-fg-tertiary">
+              funding status
+            </span>
+            <FundingStatusPill status={deal.funding_status} />
+            {deal.funding_status_updated_at && (
+              <span className="font-mono text-[10px] text-fg-muted">
+                updated {relativeTime(deal.funding_status_updated_at)}
+              </span>
+            )}
+          </div>
+        )}
 
         {(deal.routeone_is_dsp_originated || deal.routeone_has_unread_message) && (
           <div className="flex flex-wrap gap-2">

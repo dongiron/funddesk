@@ -1,4 +1,10 @@
-import { PIPELINE_STATE_SHORT, pillVariant, type PillVariant } from "../deal-schema"
+import {
+  FUNDING_STATUS_LABELS,
+  fundingStatusPillVariant,
+  PIPELINE_STATE_SHORT,
+  pillVariant,
+  type PillVariant,
+} from "../deal-schema"
 
 const PILL_CLASS: Record<PillVariant, string> = {
   gold: "text-gold border-gold/30 bg-gold/5",
@@ -13,6 +19,21 @@ export function StatePill({ state }: { state: string }) {
       className={`inline-block rounded-sm border px-2 py-1 font-mono text-[10px] lowercase tracking-wide ${PILL_CLASS[pillVariant(state)]}`}
     >
       {PIPELINE_STATE_SHORT[state] ?? state}
+    </span>
+  )
+}
+
+// Funding-status pill (clean / returned / rejected). Renders nothing when the
+// deal has no funding status yet.
+export function FundingStatusPill({ status }: { status: string | null }) {
+  const variant = fundingStatusPillVariant(status)
+  if (!variant || !status) return null
+  const label = FUNDING_STATUS_LABELS[status as keyof typeof FUNDING_STATUS_LABELS] ?? status
+  return (
+    <span
+      className={`inline-block rounded-sm border px-2 py-1 font-mono text-[10px] lowercase tracking-wide ${PILL_CLASS[variant]}`}
+    >
+      {label}
     </span>
   )
 }

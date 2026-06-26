@@ -23,6 +23,12 @@ import { validateExtensionToken } from "@/lib/extension-tokens"
 import { createServiceRoleClient } from "@/lib/supabase/service"
 import { matchLenderByName, type LenderRow } from "@/lib/lender-match"
 import { setIfPresent } from "@/lib/sync-helpers"
+import { recordDealEvent } from "@/lib/deal-events"
+import {
+  parseCustomerName,
+  extractLastWord,
+  firstNameMatches,
+} from "@/lib/routeone-match"
 import { PIPELINE_STATES } from "@/app/deals/deal-schema"
 
 const contractSchema = z.object({
@@ -32,6 +38,7 @@ const contractSchema = z.object({
   customerName: z.string().nullable().optional(),
   fundingLenderName: z.string().nullable().optional(),
   fundingStatus: z.string().nullable().optional(),
+  contractReturned: z.boolean().optional().default(false),
   hasUnreadMessage: z.boolean().optional().default(false),
   amountFinanced: z.number().nullable().optional(),
   reserveAmount: z.number().nullable().optional(),
@@ -42,41 +49,6 @@ const contractSchema = z.object({
 })
 
 const syncSchema = z.object({ contracts: z.array(contractSchema).min(1) })
-
-// "LastName, FirstName" → { first, last }. With a comma we get both; without one
-// we treat the whole string as a last name (first stays null → last-name-only
-// match). Empty → null (can't match anything).
-function parseCustomerName(
-  name: string | null | undefined
-): { first: string | null; last: string } | null {
-  const s = (name ?? "").trim().replace(/\s+/g, " ")
-  if (!s) return null
-  const idx = s.indexOf(",")
-  if (idx === -1) return { first: null, last: s }
-  const last = s.slice(0, idx).trim()
-  const first = s.slice(idx + 1).trim()
-  if (!last) return null
-  return { first: first || null, last }
-}
-
-// Last whitespace-separated token, whitespace-normalized. "Anthony Cardona" →
-// "Cardona", "Van Der Berg" → "Berg" (edge case acceptable). "" if empty.
-function extractLastWord(name: string | null | undefined): string {
-  const s = (name ?? "").trim().replace(/\s+/g, " ")
-  return s ? s.split(" ").pop()! : ""
-}
-
-// Bidirectional prefix match, case-insensitive: "Steve"/"Steven" → true. Bails
-// false on either side empty so a missing name never matches.
-function firstNameMatches(
-  a: string | null | undefined,
-  b: string | null | undefined
-): boolean {
-  const A = (a ?? "").trim().toLowerCase()
-  const B = (b ?? "").trim().toLowerCase()
-  if (!A || !B) return false
-  return A.startsWith(B) || B.startsWith(A)
-}
 
 // Scraper already emits YYYY-MM-DD; defensively keep only the date prefix.
 function toContractDate(v: string | null | undefined): string | null {
@@ -267,6 +239,7 @@ export async function POST(request: Request) {
       })
     } else {
       matched++
+      await emitContractManagerEvents(supabase, dealId, dealershipId, c)
     }
   }
 
@@ -283,4 +256,47 @@ export async function POST(request: Request) {
     errored: erroredRows.length,
     erroredRows,
   })
+}
+
+// Contract Manager row date (YYYY-MM-DD) → ISO timestamp; falls back to now when
+// the row has no parseable date. Used as the event_at so a later booked event
+// chronologically post-dates an earlier contract_returned (recovery logic).
+function cmEventAt(contractDate: string | null | undefined): string {
+  if (contractDate) {
+    const t = Date.parse(`${contractDate}T00:00:00Z`)
+    if (!Number.isNaN(t)) return new Date(t).toISOString()
+  }
+  return new Date().toISOString()
+}
+
+// Emit the deal_events implied by a matched Contract Manager row. Idempotent via
+// externalId. CM only owns submitted (deal is in funding, once ever) and
+// returned (carries the row date so a re-rejection on a later date records a
+// fresh transition). Booked/funded come exclusively from the Decision Summary
+// scraper (D-scrape-source) — CM's status cell stays sticky on "Contract
+// Rejected" even after a later booking, so it can't be trusted for recovery.
+async function emitContractManagerEvents(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  dealId: string,
+  dealershipId: string,
+  c: z.infer<typeof contractSchema>
+): Promise<void> {
+  const eventAt = cmEventAt(c.contractDate)
+  const dateSuffix = c.contractDate ?? "nodate"
+  const emit = (eventType: "contract_submitted" | "contract_returned", externalId: string) =>
+    recordDealEvent({
+      supabase,
+      dealId,
+      dealershipId,
+      eventType,
+      source: "routeone_contract_manager",
+      eventAt,
+      externalId,
+    })
+
+  await emit("contract_submitted", `routeone_cm:${c.routeoneDealId}:submitted`)
+
+  if (c.contractReturned) {
+    await emit("contract_returned", `routeone_cm:${c.routeoneDealId}:returned:${dateSuffix}`)
+  }
 }

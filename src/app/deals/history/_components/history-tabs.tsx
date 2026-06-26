@@ -1,12 +1,13 @@
 "use client"
 
 import { useState } from "react"
-import { displayName, type Deal } from "../../deal-schema"
+import { displayName, type Deal, type DealEvent } from "../../deal-schema"
 import { StatePill } from "../../_components/state-pill"
 import { DealForm } from "../../_components/deal-form"
 import { CashPanel } from "../../_components/cash-panel"
 import { RouteoneFundingPanel } from "../../_components/funding-panel"
 import { PipelineControl } from "../../_components/pipeline-control"
+import { EventsSection } from "../../_components/events-section"
 import {
   Sheet,
   SheetContent,
@@ -45,11 +46,15 @@ export function HistoryTabs({
   defaultTab,
   fundedDeals,
   unwoundDeals,
+  eventsByDeal,
+  userNames,
 }: {
   visibleTabs: HistoryTab[]
   defaultTab: HistoryTab
   fundedDeals: Deal[]
   unwoundDeals: Deal[]
+  eventsByDeal: Record<string, DealEvent[]>
+  userNames: Record<string, string>
 }) {
   const [tab, setTab] = useState<HistoryTab>(defaultTab)
   const [selected, setSelected] = useState<Deal | null>(null)
@@ -146,6 +151,12 @@ export function HistoryTabs({
                 <RouteoneFundingPanel deal={selected} />
               )}
               <PipelineControl deal={selected} />
+              <EventsSection
+                dealId={selected.id}
+                events={eventsByDeal[selected.id] ?? []}
+                canAdd={false}
+                userNames={userNames}
+              />
               <DealForm
                 deal={selected}
                 lenders={[]}

@@ -3,13 +3,16 @@
 import { createClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 import {
+  MANUAL_EVENT_TYPES,
   phoenixToday,
   PIPELINE_STATES,
   type ActionResult,
+  type DealEventType,
   type DealInput,
   type UnwindInput,
 } from "./deal-schema"
 import type { AddBlockValues, ResolveBlockValues } from "./block-schema"
+import { recordDealEvent } from "@/lib/deal-events"
 
 const DEAL_ROLES = ["owner", "manager", "finance_manager"]
 
@@ -396,5 +399,44 @@ export async function updateDealStips(
 
   revalidatePath("/deals")
   revalidatePath("/") // refresh triage dashboard chips + missing-stips count
+  return { ok: true }
+}
+
+// Record a manual deal event (notes / stip-received). Restricted to the manual
+// event types (D-manual-events-scope); system event types stay system-only.
+export async function addManualDealEvent(
+  dealId: string,
+  eventType: string,
+  eventAt: string,
+  description: string
+): Promise<ActionResult> {
+  const ctx = await requireDealActor()
+  if ("error" in ctx) return { ok: false, error: ctx.error }
+
+  if (!MANUAL_EVENT_TYPES.includes(eventType as DealEventType)) {
+    return { ok: false, error: "That event type can't be added manually." }
+  }
+
+  const parsed = Date.parse(eventAt)
+  const eventAtIso = Number.isNaN(parsed)
+    ? new Date().toISOString()
+    : new Date(parsed).toISOString()
+
+  const { inserted } = await recordDealEvent({
+    supabase: ctx.supabase,
+    dealId,
+    dealershipId: ctx.dealershipId,
+    eventType: eventType as DealEventType,
+    source: "manual",
+    eventAt: eventAtIso,
+    description: description.trim() || null,
+    createdBy: ctx.userId,
+  })
+  // Manual events never dedup (externalId is null), so a non-insert is a real
+  // failure (e.g. the deal isn't visible to this user under RLS).
+  if (!inserted) return { ok: false, error: "Could not add the event." }
+
+  revalidatePath("/deals")
+  revalidatePath("/")
   return { ok: true }
 }

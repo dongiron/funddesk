@@ -1,7 +1,13 @@
 import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import { DealsTable } from "./_components/deals-table"
-import { DEAL_SELECT, type Deal, type LenderOption } from "./deal-schema"
+import {
+  DEAL_EVENT_SELECT,
+  DEAL_SELECT,
+  type Deal,
+  type DealEvent,
+  type LenderOption,
+} from "./deal-schema"
 import {
   BLOCK_SELECT,
   type DealBlock,
@@ -74,6 +80,20 @@ export default async function DealsPage() {
     userNames[u.id] = u.full_name || u.email
   }
 
+  // Events for the detail-sheet timeline, grouped per deal (mirrors blocksByDeal).
+  const eventsByDeal: Record<string, DealEvent[]> = {}
+  if (dealIds.length > 0) {
+    const { data: events } = await supabase
+      .from("deal_events")
+      .select(DEAL_EVENT_SELECT)
+      .in("deal_id", dealIds)
+      .order("event_at", { ascending: false })
+      .returns<DealEvent[]>()
+    for (const e of events ?? []) {
+      ;(eventsByDeal[e.deal_id] ??= []).push(e)
+    }
+  }
+
   const dealsWithBlocks: DealWithBlocks[] = activeDeals.map((d) => ({
     ...d,
     blocks: blocksByDeal[d.id] ?? [],
@@ -87,6 +107,7 @@ export default async function DealsPage() {
           lenders={lenders ?? []}
           canMutate={canMutate}
           userNames={userNames}
+          eventsByDeal={eventsByDeal}
         />
       </div>
     </div>

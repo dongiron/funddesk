@@ -13,10 +13,12 @@ import {
   PIPELINE_STATES,
   PIPELINE_STATE_SHORT,
   type Deal,
+  type DealEvent,
   type LenderOption,
 } from "../deal-schema"
 import type { DealWithBlocks } from "../block-schema"
-import { StatePill } from "./state-pill"
+import { FundingStatusPill, StatePill } from "./state-pill"
+import { EventsSection } from "./events-section"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -101,11 +103,13 @@ export function DealsTable({
   lenders,
   canMutate,
   userNames,
+  eventsByDeal,
 }: {
   deals: DealWithBlocks[]
   lenders: LenderOption[]
   canMutate: boolean
   userNames: Record<string, string>
+  eventsByDeal: Record<string, DealEvent[]>
 }) {
   const [editing, setEditing] = useState<Deal | "create" | null>(null)
   const [unwindTarget, setUnwindTarget] = useState<Deal | null>(null)
@@ -359,6 +363,7 @@ export function DealsTable({
                         {d.routeone_funding_status}
                       </span>
                     )}
+                    <FundingStatusPill status={d.funding_status} />
                   </div>
                 </div>
                 <div className="text-right font-mono text-sm font-bold text-fg-primary">
@@ -433,6 +438,14 @@ export function DealsTable({
                 ) : (
                   <RouteoneFundingPanel deal={editingDeal} />
                 ))}
+              {editingDeal && (
+                <EventsSection
+                  dealId={editingDeal.id}
+                  events={eventsByDeal[editingDeal.id] ?? []}
+                  canAdd={canMutate}
+                  userNames={userNames}
+                />
+              )}
               <DealForm
                 deal={editingDeal}
                 lenders={lenders}

@@ -43,6 +43,7 @@ export type RouteoneContract = {
   customerName?: string | null // "LastName, FirstName"
   fundingLenderName?: string | null
   fundingStatus?: string | null
+  contractReturned?: boolean
   hasUnreadMessage: boolean
   amountFinanced?: number | null
   reserveAmount?: number | null
@@ -52,6 +53,25 @@ export type RouteoneContract = {
   fundingAgeDays?: number | null
 }
 export type RouteoneSyncPayload = { contracts: RouteoneContract[] }
+
+// RouteOne Decision Summary — Booked/Funded decisions from the Decision History
+// table. Mirrors the Zod schema in
+// src/app/api/extensions/routeone/decision-summary/route.ts.
+export type DecisionSummaryDecision = {
+  decisionNumber: number
+  eventAt: string // ISO timestamp (parsed browser-side)
+  statusRaw: string
+  eventType: "booked" | "funded"
+}
+export type DecisionSummaryPayload = {
+  applicant: string | null
+  routeoneAppNumber: string | null
+  fsAppNumber: string | null
+  decisions: DecisionSummaryDecision[]
+}
+export type DecisionSummaryResult =
+  | { ok: true; matched: 0 | 1; inserted: number; eventTypes: string[] }
+  | { ok: false; error: string; status: number }
 
 export type RouteoneUnmatchedRow = {
   customerName: string | null
@@ -106,12 +126,17 @@ export type SyncDealMessage = { type: "SYNC_DEAL"; payload: TaptosignDealPayload
 export type SyncRouteoneMessage = { type: "SYNC_ROUTEONE"; payload: RouteoneSyncPayload }
 export type SyncPdfExtractMessage = { type: "SYNC_PDF_EXTRACT"; payload: PdfExtractPayload }
 export type SyncBosExtractMessage = { type: "SYNC_BOS_EXTRACT"; payload: BosExtractPayload }
+export type SyncDecisionSummaryMessage = {
+  type: "SYNC_DECISION_SUMMARY"
+  payload: DecisionSummaryPayload
+}
 export type TestConnectionMessage = { type: "TEST_CONNECTION" }
 export type BackgroundMessage =
   | SyncDealMessage
   | SyncRouteoneMessage
   | SyncPdfExtractMessage
   | SyncBosExtractMessage
+  | SyncDecisionSummaryMessage
   | TestConnectionMessage
 
 export type Settings = { token?: string; serverUrl: string }

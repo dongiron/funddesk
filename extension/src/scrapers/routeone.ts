@@ -1,4 +1,4 @@
-import type { RouteoneSyncPayload } from "../shared/types"
+import type { DecisionSummaryPayload, RouteoneSyncPayload } from "../shared/types"
 
 // Injected into the RouteOne tab (ISOLATED world — DOM access, no page globals).
 // MUST be self-contained: no imports, no closures. Returns { contracts } or null.
@@ -40,13 +40,21 @@ function scrapeContractManager(): { contracts: unknown[] } | null {
     // → 5); non-numeric → null.
     const ageRaw = parseInt((cells[5].textContent ?? "").trim(), 10)
     const fundingAgeDays = Number.isFinite(ageRaw) ? ageRaw : null
+    // Contract-returned signal: dual-source for resilience — the status cell text
+    // ("Contract Rejected") OR a rejection icon anywhere in the row (alt text is
+    // stable across the gif variants contract_rejected.gif / eCanceled.gif).
+    const statusText = txt(cells[3])
+    const contractReturned =
+      !!row.querySelector('img[alt="Contract Rejected"]') ||
+      /contract rejected/i.test(statusText ?? "")
     contracts.push({
       routeoneDealId,
       contractNumber: txt(cells[1]),
       contractDate: isoDate(txt(cells[0])),
       customerName: txt(link),
       fundingLenderName: txt(lenderCell),
-      fundingStatus: txt(cells[3]),
+      fundingStatus: statusText,
+      contractReturned,
       hasUnreadMessage: !!lenderCell.querySelector('a[href*="anchorTextMessages"]'),
       amountFinanced: money(cells[6]),
       reserveAmount: money(cells[7]),
@@ -57,6 +65,147 @@ function scrapeContractManager(): { contracts: unknown[] } | null {
     })
   }
   return contracts.length > 0 ? { contracts } : null
+}
+
+// Injected into the RouteOne tab (ISOLATED world). MUST be self-contained: no
+// imports, no closures. Scrapes the Decision History table on the Decision
+// Summary page for Booked/Funded decisions — the authoritative source for those
+// events (the Contract Manager status cell stays sticky on "Contract Rejected").
+function scrapeDecisionSummary(): {
+  applicant: string | null
+  routeoneAppNumber: string | null
+  fsAppNumber: string | null
+  decisions: {
+    decisionNumber: number
+    eventAt: string
+    statusRaw: string
+    eventType: "booked" | "funded"
+  }[]
+} | null {
+  // The page lives in a nested same-origin frame; when injected into that frame
+  // we read `document` directly, otherwise reach it via the RouteOneFrame.
+  const doc =
+    document.title === "Decision Summary"
+      ? document
+      : ((document.getElementById("RouteOneFrame") as HTMLIFrameElement | null)
+          ?.contentDocument ?? null)
+  if (!doc || doc.title !== "Decision Summary") return null
+
+  const txt = (el: Element | null): string =>
+    (el?.textContent ?? "").replace(/ /g, " ").replace(/\s+/g, " ").trim()
+
+  // "MM/DD/YYYY - HH:MM AM/PM" → ISO. Parsed here (browser = dealership-local
+  // tz, which is what RouteOne renders) so toISOString() yields correct UTC.
+  const parseDate = (s: string): string | null => {
+    const m = /(\d{1,2})\/(\d{1,2})\/(\d{4})\s*-\s*(\d{1,2}):(\d{2})\s*([AP]M)/i.exec(s)
+    if (!m) return null
+    let h = +m[4] % 12
+    if (/p/i.test(m[6])) h += 12
+    const d = new Date(+m[3], +m[1] - 1, +m[2], h, +m[5], 0, 0)
+    return Number.isNaN(d.getTime()) ? null : d.toISOString()
+  }
+
+  // Find the Decision History table by its HEADER ROW (rows[0]) requiring BOTH a
+  // Dec column and a Date/Time column. Three lookalike tables (Deal Recap,
+  // Additional Deal Information, Documentation/Funding Details) share one of these
+  // headers but not both. The Dec regex is anchored so it matches "Dec" / "Dec." /
+  // "Dec #" / "Dec. #" but NOT the substring in "Decision" (the original bug). The
+  // header's first cell can be blank, so we scan all header cells.
+  let historyTable: HTMLTableElement | null = null
+  for (const t of Array.from(doc.querySelectorAll("table"))) {
+    const headerTexts = Array.from(t.rows[0]?.cells || []).map((c) => txt(c))
+    const hasDec = headerTexts.some((s) => /^dec\.?(\s*#)?$/i.test(s))
+    const hasDateTime = headerTexts.some((s) => /date\s*\/\s*time/i.test(s))
+    if (hasDec && hasDateTime) {
+      historyTable = t as HTMLTableElement
+      break
+    }
+  }
+  if (!historyTable) {
+    console.warn(
+      "[funddesk] Decision History table not found (no table had both Dec and Date/Time headers)."
+    )
+    return null
+  }
+
+  // Resolve column positions from the header text rather than hardcoding indexes.
+  // The table has a blank leading cell (so Dec.# is not cells[0]), and reading by
+  // header survives future RouteOne layout changes (added/reordered columns).
+  const headerCells = Array.from(historyTable.rows[0].cells).map((c) => txt(c))
+  const colIdx = {
+    dec: headerCells.findIndex((h) => /^dec\.?(\s*#)?$/i.test(h)),
+    dateTime: headerCells.findIndex((h) => /date\s*\/\s*time/i.test(h)),
+    status: headerCells.findIndex((h) => /^status$/i.test(h)),
+  }
+  if (colIdx.dec < 0 || colIdx.dateTime < 0 || colIdx.status < 0) {
+    console.warn("[funddesk] DS header missing required columns", headerCells)
+    return null
+  }
+  const minCells = Math.max(colIdx.dec, colIdx.dateTime, colIdx.status) + 1
+
+  // Data rows start at rows[1]. Skip any row whose Dec cell isn't a positive
+  // integer (defends against trailing summary rows).
+  const decisions: {
+    decisionNumber: number
+    eventAt: string
+    statusRaw: string
+    eventType: "booked" | "funded"
+  }[] = []
+  for (let i = 1; i < historyTable.rows.length; i++) {
+    const cells = historyTable.rows[i].cells
+    if (cells.length < minCells) continue
+    const decisionNumber = parseInt(txt(cells[colIdx.dec]), 10)
+    if (!Number.isFinite(decisionNumber) || decisionNumber <= 0) continue
+    const statusRaw = txt(cells[colIdx.status])
+    if (!/^(booked|funded)$/i.test(statusRaw)) continue // skip Approved/Conditioned
+    const eventAt = parseDate(txt(cells[colIdx.dateTime]))
+    if (!eventAt) continue
+    decisions.push({
+      decisionNumber,
+      eventAt,
+      statusRaw,
+      eventType: /^booked$/i.test(statusRaw) ? "booked" : "funded",
+    })
+  }
+
+  // Header identifiers for deal matching. The verified DS DOM puts the label and
+  // its value in ADJACENT sibling elements, not the same node:
+  //   <div class="textStrong">Applicant Name:</div><div>Mitchell, Nicola</div>
+  // Primary pass: find the label-only element and read its sibling (or, if the
+  // label sits in its own wrapper, the wrapper's next sibling). Fallback pass:
+  // an inline "Label: value" in one element, bounded so a multi-field container
+  // can't run on into the next label.
+  const labelValue = (label: string): string | null => {
+    const esc = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    const labelOnlyRe = new RegExp("^" + esc + "\\s*:?\\s*$", "i")
+    const inlineRe = new RegExp(
+      "^" +
+        esc +
+        "\\s*:\\s*(.+?)(?:\\s+(?:RouteOne App|FS App|Applicant Name|Dealer|Status|Product)\\b.*)?$",
+      "i"
+    )
+    const els = Array.from(doc.querySelectorAll("td,th,span,div,label,b,strong,p,li"))
+    for (const el of els) {
+      if (!labelOnlyRe.test(txt(el))) continue
+      const sib = el.nextElementSibling ? txt(el.nextElementSibling) : ""
+      if (sib) return sib
+      const pSib = el.parentElement?.nextElementSibling
+      const pSibText = pSib ? txt(pSib) : ""
+      if (pSibText) return pSibText
+    }
+    for (const el of els) {
+      const m = inlineRe.exec(txt(el))
+      if (m && m[1].trim()) return m[1].trim()
+    }
+    return null
+  }
+
+  return {
+    applicant: labelValue("Applicant Name"),
+    routeoneAppNumber: labelValue("RouteOne App #"),
+    fsAppNumber: labelValue("FS App #"),
+    decisions,
+  }
 }
 
 export async function getRouteoneScrape(): Promise<RouteoneSyncPayload | null> {
@@ -82,6 +231,34 @@ export async function getRouteoneScrape(): Promise<RouteoneSyncPayload | null> {
       return !!result && result.contracts.length > 0
     })
     return (winner?.result as RouteoneSyncPayload | null) ?? null
+  } catch {
+    return null
+  }
+}
+
+export async function getDecisionSummaryScrape(): Promise<DecisionSummaryPayload | null> {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+    if (!tab?.id || !tab.url) return null
+    let host: string
+    try {
+      host = new URL(tab.url).hostname
+    } catch {
+      return null
+    }
+    if (host !== "www.routeone.net" && !host.endsWith(".routeone.net")) return null
+    // Decision Summary renders inside a nested frame — inject into all frames and
+    // take whichever returns decisions (the others return null via their guard).
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: tab.id, allFrames: true },
+      world: "ISOLATED",
+      func: scrapeDecisionSummary,
+    })
+    const winner = results?.find((r) => {
+      const result = r.result as DecisionSummaryPayload | null
+      return !!result && result.decisions.length > 0
+    })
+    return (winner?.result as DecisionSummaryPayload | null) ?? null
   } catch {
     return null
   }
