@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { CheckIcon, MoreHorizontalIcon, XIcon } from "lucide-react"
 import {
@@ -137,6 +137,20 @@ export function DealsTable({
     const qs = params.toString()
     router.push(qs ? `${pathname}?${qs}` : pathname)
   }
+
+  // Deep link from the Notification Center (/deals?dealId=…): open that deal's
+  // sheet on mount, then strip the param so a later close/refresh won't reopen.
+  const dealIdParam = searchParams.get("dealId")
+  useEffect(() => {
+    if (!dealIdParam) return
+    const target = deals.find((d) => d.id === dealIdParam)
+    /* eslint-disable-next-line react-hooks/set-state-in-effect */
+    if (target) setEditing(target)
+    const params = new URLSearchParams(searchParams.toString())
+    params.delete("dealId")
+    router.replace(params.toString() ? `${pathname}?${params}` : pathname)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dealIdParam])
 
   const sheetOpen = editing !== null
   const editingDeal = editing === "create" ? undefined : (editing ?? undefined)

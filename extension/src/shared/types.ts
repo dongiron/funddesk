@@ -63,14 +63,31 @@ export type DecisionSummaryDecision = {
   statusRaw: string
   eventType: "booked" | "funded"
 }
+export type LenderMessageEntry = {
+  routeoneAppNumber: string | null
+  senderName: string
+  body: string
+  receivedAt: string // ISO timestamp (parsed browser-side)
+}
 export type DecisionSummaryPayload = {
   applicant: string | null
   routeoneAppNumber: string | null
   fsAppNumber: string | null
   decisions: DecisionSummaryDecision[]
+  messages: LenderMessageEntry[]
 }
 export type DecisionSummaryResult =
   | { ok: true; matched: 0 | 1; inserted: number; eventTypes: string[] }
+  | { ok: false; error: string; status: number }
+
+// Lender messages captured alongside the Decision Summary scrape. Mirrors the
+// Zod schema in src/app/api/extensions/routeone/messages/route.ts.
+export type MessagesSyncPayload = {
+  dealMatch: { routeoneDealId: string | null; applicantName: string | null }
+  messages: LenderMessageEntry[]
+}
+export type MessagesSyncResult =
+  | { ok: true; matched: 0 | 1; inserted: number }
   | { ok: false; error: string; status: number }
 
 export type RouteoneUnmatchedRow = {
@@ -130,6 +147,7 @@ export type SyncDecisionSummaryMessage = {
   type: "SYNC_DECISION_SUMMARY"
   payload: DecisionSummaryPayload
 }
+export type SyncMessagesMessage = { type: "SYNC_MESSAGES"; payload: MessagesSyncPayload }
 export type TestConnectionMessage = { type: "TEST_CONNECTION" }
 export type BackgroundMessage =
   | SyncDealMessage
@@ -137,6 +155,7 @@ export type BackgroundMessage =
   | SyncPdfExtractMessage
   | SyncBosExtractMessage
   | SyncDecisionSummaryMessage
+  | SyncMessagesMessage
   | TestConnectionMessage
 
 export type Settings = { token?: string; serverUrl: string }

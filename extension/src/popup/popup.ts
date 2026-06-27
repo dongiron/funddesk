@@ -3,6 +3,7 @@ import type {
   BosExtractResult,
   DecisionSummaryPayload,
   DecisionSummaryResult,
+  MessagesSyncResult,
   PdfExtractResult,
   RouteoneSyncPayload,
   RouteoneSyncResult,
@@ -279,9 +280,17 @@ function renderRouteoneBatch(payload: RouteoneSyncPayload) {
     .join("")
   const more = n > 5 ? `<div class="pv-sub muted">+${n - 5} more</div>` : ""
 
+  // Surface deals with a yellow-envelope unread message — messages are scraped
+  // per-deal from each Decision Summary (4a is manual; no auto-navigation).
+  const unread = payload.contracts.filter((c) => c.hasUnreadMessage)
+  const unreadNote = unread.length
+    ? `<div class="pv-sub mono">${unread.length} deal${unread.length === 1 ? "" : "s"} with new messages — open each Decision Summary to sync</div>`
+    : ""
+
   app.innerHTML = `
     ${header(`${n} contract${plural}`)}
     <div class="r1-title">${n} contract${plural} in funding</div>
+    ${unreadNote}
     <div class="preview">${preview}${more}</div>
     <button id="sync" class="btn-gold btn-full">Sync to FundDesk</button>
     <div id="result"></div>
@@ -339,10 +348,16 @@ function renderDecisionSummary(payload: DecisionSummaryPayload) {
     )
     .join("")
 
+  const msgCount = payload.messages.length
+  const msgLine = msgCount
+    ? `<div class="pv-sub mono">${msgCount} lender message${msgCount === 1 ? "" : "s"}</div>`
+    : ""
+
   app.innerHTML = `
     ${header("decision summary")}
     <div class="r1-title">${esc(applicant)}</div>
     <div class="pv-sub mono">${n} booked/funded decision${n === 1 ? "" : "s"}</div>
+    ${msgLine}
     <div class="preview">${preview}</div>
     <button id="sync" class="btn-gold btn-full">Sync to FundDesk</button>
     <div id="result"></div>
@@ -375,8 +390,27 @@ function renderDecisionSummary(payload: DecisionSummaryPayload) {
       syncBtn.disabled = false
       return
     }
-    const ev = `${result.inserted} funding event${result.inserted === 1 ? "" : "s"}`
-    resultEl.innerHTML = `<p class="ok">Captured ${ev} ✓</p>`
+
+    let summary = `${result.inserted} funding event${result.inserted === 1 ? "" : "s"}`
+
+    // Also sync any lender messages captured in the same scrape.
+    if (payload.messages.length > 0) {
+      const msgResult = (await chrome.runtime.sendMessage({
+        type: "SYNC_MESSAGES",
+        payload: {
+          dealMatch: {
+            routeoneDealId: payload.fsAppNumber ?? payload.routeoneAppNumber,
+            applicantName: payload.applicant,
+          },
+          messages: payload.messages,
+        },
+      })) as MessagesSyncResult
+      if (msgResult.ok && msgResult.matched === 1) {
+        summary += ` · ${msgResult.inserted} message${msgResult.inserted === 1 ? "" : "s"}`
+      }
+    }
+
+    resultEl.innerHTML = `<p class="ok">Captured ${summary} ✓</p>`
     syncBtn.textContent = "Synced"
     setTimeout(() => window.close(), 3000)
   })

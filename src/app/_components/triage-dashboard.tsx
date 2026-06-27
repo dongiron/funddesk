@@ -10,6 +10,8 @@ import {
 } from "../deals/_components/blocks-sheet"
 import { DealForm } from "../deals/_components/deal-form"
 import { CitSection, type CitData } from "../deals/_components/cit-section"
+import { NotificationCenter } from "./notification-center"
+import type { LenderMessage } from "../deals/deal-schema"
 import {
   Sheet,
   SheetContent,
@@ -239,6 +241,8 @@ export function TriageDashboard({
   clean,
   funded,
   cit,
+  messages,
+  unreadCount,
   currentUserRole,
   userNames,
 }: {
@@ -250,6 +254,8 @@ export function TriageDashboard({
   clean: ActiveSection
   funded: FundedSection
   cit: CitData
+  messages: LenderMessage[]
+  unreadCount: number
   currentUserRole: string
   userNames: Record<string, string>
 }) {
@@ -456,6 +462,8 @@ export function TriageDashboard({
       )}
 
       <CitSection cit={cit} />
+
+      <NotificationCenter messages={messages} unreadCount={unreadCount} />
 
       <BlocksSheet
         deal={blocksRow?.deal ?? null}

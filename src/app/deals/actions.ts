@@ -440,3 +440,45 @@ export async function addManualDealEvent(
   revalidatePath("/")
   return { ok: true }
 }
+
+// ── Lender messages (Notification Center) ────────────────────────────────────
+// RLS scopes these to deals the actor can see (owners/managers all; finance
+// managers their own). The action is role-gated; the UPDATE policy enforces the
+// row-level ownership so a no-op simply means "not yours / already in state".
+
+export async function markMessageRead(messageId: string): Promise<ActionResult> {
+  const ctx = await requireDealActor()
+  if ("error" in ctx) return { ok: false, error: ctx.error }
+  const { error } = await ctx.supabase
+    .from("lender_messages")
+    .update({ read_at: new Date().toISOString(), read_by: ctx.userId })
+    .eq("id", messageId)
+    .is("read_at", null) // idempotent — preserve the first-read timestamp
+  if (error) return { ok: false, error: friendly(error) }
+  revalidatePath("/")
+  return { ok: true }
+}
+
+export async function markMessageCompleted(messageId: string): Promise<ActionResult> {
+  const ctx = await requireDealActor()
+  if ("error" in ctx) return { ok: false, error: ctx.error }
+  const { error } = await ctx.supabase
+    .from("lender_messages")
+    .update({ completed_at: new Date().toISOString(), completed_by: ctx.userId })
+    .eq("id", messageId)
+  if (error) return { ok: false, error: friendly(error) }
+  revalidatePath("/")
+  return { ok: true }
+}
+
+export async function unmarkMessageCompleted(messageId: string): Promise<ActionResult> {
+  const ctx = await requireDealActor()
+  if ("error" in ctx) return { ok: false, error: ctx.error }
+  const { error } = await ctx.supabase
+    .from("lender_messages")
+    .update({ completed_at: null, completed_by: null })
+    .eq("id", messageId)
+  if (error) return { ok: false, error: friendly(error) }
+  revalidatePath("/")
+  return { ok: true }
+}

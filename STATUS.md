@@ -58,20 +58,21 @@
 - **3.8.1 — CIT section on Triage + /deals drill-down filters.** Full-width "Contracts in transit" section (avg-age / overdue-15+ / critical-30+ cards, aging-bucket table, by-lender breakdown with synthetic Cash-deals row); client-side URL filters on `/deals` (`aging`, `lender_id`, `payment_method`) with removable chips; `revalidatePath("/")`/`"/deals"` in both sync routes. Shared aging helpers in `deal-schema.ts`.
 - **3.8.1.1 — Cash check precedence in CIT bucketing.** `payment_method === "cash"` is tested before the `lender_id` branch so cash deals (legitimately `lender_id=null`) route to the Cash-deals row, not the unmapped-lender bucket. (Already in place; confirmed.)
 - **3.8.1.2 — Sticky `payment_method` on TaptoSign re-sync.** When no positive financed signal is present, preserve the deal's existing classification instead of regressing to cash — fixes financed→cash flips on CUDL credit-union deals that return a null TaptoSign `AssignToLender`.
+- **3.8.2 — BoS PDF extraction.** Authoritative `payment_method` from the Bill of Sale RISC-vs-Cash checkbox (`/api/extensions/taptosign/bos-extract`); RouteOne-provenance guard; pipeline reconcile on flip; `customer_business_name` + `outside_lender_name` columns; shared `displayName()`.
+- **3.8.3 (+.1/.2/.3/.4) — Event-sourced deal audit trail.** `deal_events` table + `funding_status` pill; events from TaptoSign (signed), RouteOne Contract Manager (submitted/returned), and RouteOne Decision Summary (booked/funded); new `/decision-summary` endpoint; `scrapeDecisionSummary` (DS scraper + the four selector/extraction fixes); manual events + timeline section.
+- **3.8.4a — Lender messages Notification Center.** `lender_messages` table (content-hash dedup, ownership-gated RLS); `/api/extensions/routeone/messages` endpoint; message capture folded into the DS scrape; full-width Notification Center below CIT (unread badge, all/unread/completed filters, row→`/deals?dealId=` deep link, mark read/complete). **Manual refresh only — no background polling.**
 
-Shipped in commits up to `cc63c0d`.
+Shipped in commits up to `f35c236` (3.8.3); 3.8.4a pending this commit.
 
-### Pending manual DB steps (Supabase SQL editor — Don)
-1. Apply `20260620000001_cash_deals.sql` (adds `payment_method`, `balance_due`, the two new pipeline states, the `funds_uncleared` block type). **Required** — triage + deals pages now `select` these columns and will error/empty without it.
-2. Confirm `20260620000000_cleanup_columns.sql` is applied (provides `signed_at`, used by CIT aging).
-3. Run the cash backfill UPDATE (flips genuinely-cash rows mis-saved as `financed`; cosmetic — fixes the CIT "Cash deals" vs "unmapped lender" bucketing).
+### Migrations — all applied to funddesk-dev as of 3.8.4a
+`20260620000000_cleanup_columns` (signed_at), `20260620000001_cash_deals`, `20260622000000_bos_columns`, `20260623000000_deal_events`, `20260626000000_lender_messages`, plus the cash backfill + the one-time CM booked/funded `deal_events` cleanup. A fresh checkout pointed at a new database must apply all of these (DDL is run manually by Don in the Supabase SQL editor).
 
 ## Next
-**Slice 3.8.2 — BoS PDF extraction.** Authoritative `payment_method` from the Bill of Sale via the RISC-vs-Cash checkbox — the proper first-sync classification fix (sticky detection in 3.8.1.2 only prevents *re-sync* regression). Already scoped; ready to build once the open D-decision is confirmed.
+**Slice 3.8.4b — Background message polling.** Promote 4a's manual refresh to automatic capture: `chrome.alarms` (5-min default, user-configurable off/5/15), a **granted host permission for `*://*.routeone.net/*`** (4a deliberately avoided this — manual scrape uses `activeTab` + the popup gesture), a multi-deal navigation strategy (open each flagged deal's Decision Summary), session-expiry detection (login-page selectors → stop + notify), and an extension settings page. Note: **4a's Notification Center "Refresh" is `router.refresh()` (re-pull from DB), NOT a live scrape** — live scrape requires the active tab to be RouteOne, which is exactly what 4b's host permission + polling enable.
 
 ## Upcoming
-- **3.8.3 — RouteOne Decision Details.** Lender messages + decision history (originally numbered 3.4).
-- **3.9 — Notifications panel.** Left/right Triage split; deferred until 3.8.3 provides a real notification source.
+- **3.8.5 — Keyword detection / auto-block creation** from message content (deferred from 3.8.4 per D-pipeline-effects).
+- **3.9 — Notifications panel polish.** Side-by-side CIT/Notification-Center split (4a is stacked full-width) with a proper responsive pass; message archive page (the deferred "view all messages →").
 
 ## Deferred / Known Issues
 - **CUDL integration** — parallel to RouteOne for credit-union financing. The 3.8.1.2 composite-signal logic already accommodates it via `existingHasLender`; wire CUDL provenance into `hasFinancedSignals` when it ships.

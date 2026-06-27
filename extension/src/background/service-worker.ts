@@ -2,6 +2,7 @@ import {
   syncBosExtract,
   syncDeal,
   syncDecisionSummary,
+  syncMessages,
   syncPdfExtract,
   syncRouteoneBatch,
   testConnection,
@@ -10,6 +11,7 @@ import type {
   BackgroundMessage,
   BosExtractResult,
   DecisionSummaryResult,
+  MessagesSyncResult,
   PdfExtractResult,
   RouteoneSyncResult,
   SyncResult,
@@ -30,6 +32,7 @@ chrome.runtime.onMessage.addListener(
         | PdfExtractResult
         | BosExtractResult
         | DecisionSummaryResult
+        | MessagesSyncResult
         | TestResult
     ) => void
   ) => {
@@ -51,6 +54,10 @@ chrome.runtime.onMessage.addListener(
     }
     if (message?.type === "SYNC_DECISION_SUMMARY") {
       syncDecisionSummary(message.payload).then(sendResponse)
+      return true
+    }
+    if (message?.type === "SYNC_MESSAGES") {
+      syncMessages(message.payload).then(sendResponse)
       return true
     }
     if (message?.type === "TEST_CONNECTION") {

@@ -366,6 +366,30 @@ export type DealEvent = {
 export const DEAL_EVENT_SELECT =
   "id, deal_id, event_type, source, event_at, description, created_by"
 
+// ── Lender messages (RouteOne text messages → Notification Center) ───────────
+
+export type LenderMessage = {
+  id: string
+  deal_id: string
+  sender_name: string
+  subject: string | null
+  body: string
+  received_at: string
+  routeone_app_number: string | null
+  read_at: string | null
+  completed_at: string | null
+  deal: {
+    customer_first_name: string | null
+    customer_last_name: string | null
+    customer_business_name: string | null
+  } | null
+}
+
+export const LENDER_MESSAGE_SELECT =
+  "id, deal_id, sender_name, subject, body, received_at, routeone_app_number, " +
+  "read_at, completed_at, " +
+  "deal:deal_id(customer_first_name, customer_last_name, customer_business_name)"
+
 // ── Funding status pill ──────────────────────────────────────────────────────
 
 export const FUNDING_STATUS_LABELS: Record<"clean" | "returned" | "rejected", string> = {

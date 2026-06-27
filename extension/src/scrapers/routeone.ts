@@ -71,7 +71,7 @@ function scrapeContractManager(): { contracts: unknown[] } | null {
 // imports, no closures. Scrapes the Decision History table on the Decision
 // Summary page for Booked/Funded decisions — the authoritative source for those
 // events (the Contract Manager status cell stays sticky on "Contract Rejected").
-function scrapeDecisionSummary(): {
+async function scrapeDecisionSummary(): Promise<{
   applicant: string | null
   routeoneAppNumber: string | null
   fsAppNumber: string | null
@@ -81,7 +81,13 @@ function scrapeDecisionSummary(): {
     statusRaw: string
     eventType: "booked" | "funded"
   }[]
-} | null {
+  messages: {
+    routeoneAppNumber: string | null
+    senderName: string
+    body: string
+    receivedAt: string
+  }[]
+} | null> {
   // The page lives in a nested same-origin frame; when injected into that frame
   // we read `document` directly, otherwise reach it via the RouteOneFrame.
   const doc =
@@ -200,11 +206,66 @@ function scrapeDecisionSummary(): {
     return null
   }
 
+  // Capture lender text messages from the "View Related Text Messages" modal
+  // (best-effort — a failure here never blocks decision capture). Open the modal,
+  // poll for .displayRelatedMessages, scrape the ul rows, then close the dialog.
+  const messages: {
+    routeoneAppNumber: string | null
+    senderName: string
+    body: string
+    receivedAt: string
+  }[] = []
+  try {
+    const btn = Array.from(
+      doc.querySelectorAll("button, a, input[type='button'], input[type='submit']")
+    ).find((el) =>
+      /view related text messages/i.test(txt(el) || (el as HTMLInputElement).value || "")
+    ) as HTMLElement | undefined
+    if (btn) {
+      btn.click()
+      const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
+      let container: Element | null = null
+      for (let i = 0; i < 30; i++) {
+        container = doc.querySelector(".displayRelatedMessages")
+        if (container && container.querySelectorAll("ul").length > 0) break
+        await wait(100)
+      }
+      if (container) {
+        for (const ul of Array.from(container.querySelectorAll("ul"))) {
+          if (ul.classList.contains("messageHeader")) continue
+          const colTwo = ul.querySelector("li.colTwo")
+          const colThree = ul.querySelector("li.colThree")
+          const colFour = ul.querySelector("li.colFour")
+          if (!colTwo || !colThree || !colFour) continue
+          const senderName = txt(colTwo)
+          // Strip HTML comments (e.g. <!--TLTIHB-->), then take the text.
+          const cleaned = (colThree as HTMLElement).innerHTML.replace(/<!--[\s\S]*?-->/g, "")
+          const tmp = doc.createElement("div")
+          tmp.innerHTML = cleaned
+          const body = txt(tmp)
+          const receivedAt = parseDate(txt(colFour))
+          if (!senderName || !body || !receivedAt) continue
+          messages.push({
+            routeoneAppNumber: txt(ul.querySelector("li.colOne")) || null,
+            senderName,
+            body,
+            receivedAt,
+          })
+        }
+      }
+      const closeBtn = doc.querySelector(".ui-dialog-titlebar-close") as HTMLElement | null
+      closeBtn?.click()
+    }
+  } catch {
+    // best-effort: leave messages empty on any failure
+  }
+
   return {
     applicant: labelValue("Applicant Name"),
     routeoneAppNumber: labelValue("RouteOne App #"),
     fsAppNumber: labelValue("FS App #"),
     decisions,
+    messages,
   }
 }
 

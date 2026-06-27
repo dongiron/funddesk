@@ -3,12 +3,14 @@ import { redirect } from "next/navigation"
 import {
   AGING_BUCKETS,
   DEAL_SELECT,
+  LENDER_MESSAGE_SELECT,
   agingBucket,
   daysSinceSold,
   dealAgeDays,
   phoenixToday,
   type AgingBucket,
   type Deal,
+  type LenderMessage,
 } from "./deals/deal-schema"
 import { BLOCK_SELECT, type DealBlock } from "./deals/block-schema"
 import type { BlocksSheetDeal } from "./deals/_components/blocks-sheet"
@@ -107,6 +109,21 @@ export default async function Home() {
     .order("funded_date", { ascending: false })
     .returns<Deal[]>()
   const fundedDeals = fundedData ?? []
+
+  // Lender messages for the Notification Center (RLS-scoped to the user's deals).
+  const { data: messagesData } = await supabase
+    .from("lender_messages")
+    .select(LENDER_MESSAGE_SELECT)
+    .order("received_at", { ascending: false })
+    .limit(50)
+    .returns<LenderMessage[]>()
+  const messages = messagesData ?? []
+
+  const { count: unreadCount } = await supabase
+    .from("lender_messages")
+    .select("id", { count: "exact", head: true })
+    .is("read_at", null)
+    .is("completed_at", null)
 
   const blocksByDeal: Record<string, DealBlock[]> = {}
   if (dealIds.length > 0) {
@@ -357,6 +374,8 @@ export default async function Home() {
           clean={toSection(cleanRows)}
           funded={funded}
           cit={cit}
+          messages={messages}
+          unreadCount={unreadCount ?? 0}
           currentUserRole={currentUserRole}
           userNames={userNames}
         />
