@@ -76,7 +76,7 @@ Shipped in commits up to `f35c236` (3.8.3); 3.8.4a pending this commit.
 
 ## Deferred / Known Issues
 - **CUDL integration** — parallel to RouteOne for credit-union financing. The 3.8.1.2 composite-signal logic already accommodates it via `existingHasLender`; wire CUDL provenance into `hasFinancedSignals` when it ships.
-- **Vercel production body limit** — 4.5MB serverless request cap vs PDFs up to ~10MB base64 (works on localhost/dev). Resolve before deploy via `vercel.json` config, Supabase Storage staging, or the Anthropic Files API upload path.
+- **Vercel production body limit — IN PROGRESS (Slice 3.9.1).** Vercel's 4.5MB serverless request-body cap is fixed/non-configurable, so the extraction endpoints now use **Supabase Storage staging**: the extension uploads the PDF directly to a private `deal-pdfs` bucket via a signed upload URL (`/api/extensions/taptosign/pdf-upload-url`), then calls bos-extract/pdf-extract with the storage path; the routes download server-side. Shipped code; **not yet verified in production** — pending (a) Don creating the `deal-pdfs` bucket in Supabase, and (b) a real Frazer sync confirming 200 instead of 413. Mark **resolved** once that passes. Possible follow-up: Supabase Storage CORS may need to allow the extension origin for the direct upload.
 - **`proxy.ts` middleware deprecation** — Next 16 cosmetic warning; rename `src/middleware.ts` → `src/proxy.ts`.
 - **Manual `payment_method` override UI** — revisit only if 3.8.2 BoS extraction proves insufficient for edge cases.
 - **PDF hash caching** — cache on PDF hash so a re-synced deal doesn't re-extract and re-bill the Anthropic call.

@@ -25,16 +25,24 @@ import { validateExtensionToken } from "@/lib/extension-tokens"
 import { createServiceRoleClient } from "@/lib/supabase/service"
 import { setIfPresent } from "@/lib/sync-helpers"
 import { logExtraction } from "@/lib/extraction-log"
+import { downloadStagedPdf, deleteStagedPdf } from "@/lib/pdf-staging"
 import { STATES_BY_METHOD, TERMINAL_STATES } from "@/app/deals/deal-schema"
 
 // Same cap as /pdf-extract — 20MB base64 (~15MB PDF). The BoS lives in the same
 // signed package the extension already sends to /pdf-extract.
 const MAX_PDF_BASE64_CHARS = 20_000_000
 
-const bodySchema = z.object({
-  taptosignDealId: z.string().min(1),
-  pdfBase64: z.string().min(1),
-})
+// The PDF arrives either as a staged Storage path (production — bypasses Vercel's
+// 4.5MB request-body limit) or, as a fallback, inline base64 (dev / small files).
+const bodySchema = z
+  .object({
+    taptosignDealId: z.string().min(1),
+    pdfPath: z.string().min(1).optional(),
+    pdfBase64: z.string().min(1).optional(),
+  })
+  .refine((b) => !!b.pdfPath || !!b.pdfBase64, {
+    message: "Either pdfPath or pdfBase64 is required.",
+  })
 
 // Our own validation of Claude's structured output (the project's zod 4). The
 // model is also constrained by BOS_JSON_SCHEMA below. 10 required + 4 nullable =
@@ -158,15 +166,32 @@ export async function POST(request: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid payload." }, { status: 422 })
   }
-  if (parsed.data.pdfBase64.length > MAX_PDF_BASE64_CHARS) {
+
+  const supabase = createServiceRoleClient()
+
+  // Resolve the PDF: download the staged object (tenant-scoped) when a path was
+  // sent, else use inline base64. `stagedPath` is non-null only when we downloaded
+  // it — used to clean up the staged object once extraction is done.
+  let pdfBase64: string
+  let stagedPath: string | null = null
+  if (parsed.data.pdfPath) {
+    const dl = await downloadStagedPdf(supabase, dealershipId, parsed.data.pdfPath)
+    if (!dl.ok) {
+      return NextResponse.json({ error: dl.error }, { status: 400 })
+    }
+    pdfBase64 = dl.base64
+    stagedPath = parsed.data.pdfPath
+  } else {
+    pdfBase64 = parsed.data.pdfBase64!
+  }
+
+  if (pdfBase64.length > MAX_PDF_BASE64_CHARS) {
     return NextResponse.json(
       { error: "PDF is too large to extract (must be under 20MB). Try a smaller package." },
       { status: 413 }
     )
   }
-  console.log(`[bos-extract] pdfBase64 length=${parsed.data.pdfBase64.length}`)
-
-  const supabase = createServiceRoleClient()
+  console.log(`[bos-extract] pdf resolved length=${pdfBase64.length} staged=${!!stagedPath}`)
 
   // 3. Require an existing synced deal (tenant-scoped). Pull the columns we may
   //    write (for the change count) plus the signals that gate classification.
@@ -220,7 +245,7 @@ export async function POST(request: Request) {
               source: {
                 type: "base64",
                 media_type: "application/pdf",
-                data: parsed.data.pdfBase64,
+                data: pdfBase64,
               },
             },
             { type: "text", text: BOS_PROMPT },
@@ -293,7 +318,7 @@ export async function POST(request: Request) {
     extracted.payment_type === "risc" ? "financed" : "cash"
   const paymentMethod: "financed" | "cash" = hasRouteoneProvenance ? "financed" : bosMethod
 
-  logExtraction("bos-extract", parsed.data.pdfBase64, extracted, {
+  logExtraction("bos-extract", pdfBase64, extracted, {
     payment_type: extracted.payment_type,
     paymentMethod,
     routeoneProvenance: hasRouteoneProvenance,
@@ -353,6 +378,12 @@ export async function POST(request: Request) {
 
   if (error) {
     return NextResponse.json({ error: "Could not save extracted data." }, { status: 500 })
+  }
+
+  // Clean up the staged PDF only for cash deals — a financed deal's RIC extraction
+  // (/pdf-extract) runs next and reuses the same object, so it does the cleanup.
+  if (stagedPath && paymentMethod === "cash") {
+    await deleteStagedPdf(supabase, stagedPath)
   }
 
   return NextResponse.json({ extracted, fieldsUpdated, paymentMethod })

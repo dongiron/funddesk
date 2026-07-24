@@ -119,16 +119,23 @@ export type SyncResult =
 
 export type TestResult = { ok: true } | { ok: false; error: string; status: number }
 
+// ── PDF staging (upload to Supabase Storage, bypass Vercel's 4.5MB body cap) ──
+// The PDF is uploaded once to Storage; both extractors then receive just the path.
+export type StagePdfPayload = { taptosignDealId: string; pdfBase64: string }
+export type StagePdfResult =
+  | { ok: true; path: string }
+  | { ok: false; error: string; status: number }
+
 // ── TaptoSign PDF extraction (second-stage sync) ──────────────────────────────
-export type PdfExtractPayload = { taptosignDealId: string; pdfBase64: string }
+export type PdfExtractPayload = { taptosignDealId: string; pdfPath: string }
 export type PdfExtractResult =
   | { ok: true; fieldsUpdated: number; extracted: Record<string, unknown> }
   | { ok: false; error: string; status: number }
 
 // ── Bill of Sale extraction (authoritative payment_method) ────────────────────
-// Same signed-PDF package as the RIC extraction above; returns the authoritative
+// Same staged PDF as the RIC extraction above; returns the authoritative
 // classification so the popup knows whether to run the RIC stage.
-export type BosExtractPayload = { taptosignDealId: string; pdfBase64: string }
+export type BosExtractPayload = { taptosignDealId: string; pdfPath: string }
 export type BosExtractResult =
   | {
       ok: true
@@ -141,6 +148,7 @@ export type BosExtractResult =
 // ── Message envelopes (popup → background) ────────────────────────────────────
 export type SyncDealMessage = { type: "SYNC_DEAL"; payload: TaptosignDealPayload }
 export type SyncRouteoneMessage = { type: "SYNC_ROUTEONE"; payload: RouteoneSyncPayload }
+export type StagePdfMessage = { type: "STAGE_PDF"; payload: StagePdfPayload }
 export type SyncPdfExtractMessage = { type: "SYNC_PDF_EXTRACT"; payload: PdfExtractPayload }
 export type SyncBosExtractMessage = { type: "SYNC_BOS_EXTRACT"; payload: BosExtractPayload }
 export type SyncDecisionSummaryMessage = {
@@ -152,6 +160,7 @@ export type TestConnectionMessage = { type: "TEST_CONNECTION" }
 export type BackgroundMessage =
   | SyncDealMessage
   | SyncRouteoneMessage
+  | StagePdfMessage
   | SyncPdfExtractMessage
   | SyncBosExtractMessage
   | SyncDecisionSummaryMessage

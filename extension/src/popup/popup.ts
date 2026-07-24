@@ -8,6 +8,7 @@ import type {
   RouteoneSyncPayload,
   RouteoneSyncResult,
   Settings,
+  StagePdfResult,
   SyncResult,
   TaptosignDealPayload,
   TestResult,
@@ -220,19 +221,33 @@ function renderDeal(p: TaptosignDealPayload, raw: RawTaptosignScrape) {
     syncBtn.textContent = "Synced"
 
     // Stages 2–3 — AI extraction from the signed PDF package. Best-effort: a
-    // failure here never undoes the stage-1 sync that already landed. The same
-    // base64 package feeds both extractors (BoS + RIC).
+    // failure here never undoes the stage-1 sync that already landed. The PDF is
+    // uploaded once to storage and both extractors (BoS + RIC) receive its path.
     const pdfBase64 = await getPdfBase64(raw)
     if (!pdfBase64) {
       setTimeout(() => window.close(), 2000)
       return
     }
 
+    // Stage the PDF: upload directly to storage (bypasses Vercel's 4.5MB request
+    // body cap), then hand the extraction routes just the path.
+    resultEl.innerHTML += `<p class="muted extracting">Uploading contract…</p>`
+    const staged = (await chrome.runtime.sendMessage({
+      type: "STAGE_PDF",
+      payload: { taptosignDealId: p.taptosignDealId, pdfBase64 },
+    })) as StagePdfResult
+    if (!staged.ok) {
+      resultEl.innerHTML = `<p class="ok">Synced ✓</p><p class="error">PDF upload failed: ${esc(staged.error)}</p>`
+      setTimeout(() => window.close(), 3000)
+      return
+    }
+    const pdfPath = staged.path
+
     // Stage 2 — Bill of Sale: authoritative payment_method (RISC vs Cash).
     resultEl.innerHTML += `<p class="muted extracting">Extracting Bill of Sale…</p>`
     const bos = (await chrome.runtime.sendMessage({
       type: "SYNC_BOS_EXTRACT",
-      payload: { taptosignDealId: p.taptosignDealId, pdfBase64 },
+      payload: { taptosignDealId: p.taptosignDealId, pdfPath },
     })) as BosExtractResult
 
     if (!bos.ok) {
@@ -248,7 +263,7 @@ function renderDeal(p: TaptosignDealPayload, raw: RawTaptosignScrape) {
       resultEl.innerHTML += `<p class="muted extracting">Extracting contract…</p>`
       const ric = (await chrome.runtime.sendMessage({
         type: "SYNC_PDF_EXTRACT",
-        payload: { taptosignDealId: p.taptosignDealId, pdfBase64 },
+        payload: { taptosignDealId: p.taptosignDealId, pdfPath },
       })) as PdfExtractResult
       if (ric.ok) {
         totalFields += ric.fieldsUpdated

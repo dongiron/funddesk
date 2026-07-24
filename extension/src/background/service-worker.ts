@@ -1,4 +1,5 @@
 import {
+  stagePdf,
   syncBosExtract,
   syncDeal,
   syncDecisionSummary,
@@ -14,6 +15,7 @@ import type {
   MessagesSyncResult,
   PdfExtractResult,
   RouteoneSyncResult,
+  StagePdfResult,
   SyncResult,
   TestResult,
 } from "../shared/types"
@@ -33,12 +35,17 @@ chrome.runtime.onMessage.addListener(
         | BosExtractResult
         | DecisionSummaryResult
         | MessagesSyncResult
+        | StagePdfResult
         | TestResult
     ) => void
   ) => {
     if (message?.type === "SYNC_DEAL") {
       syncDeal(message.payload).then(sendResponse)
       return true // async sendResponse
+    }
+    if (message?.type === "STAGE_PDF") {
+      stagePdf(message.payload).then(sendResponse)
+      return true
     }
     if (message?.type === "SYNC_ROUTEONE") {
       syncRouteoneBatch(message.payload).then(sendResponse)
