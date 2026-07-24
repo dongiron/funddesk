@@ -24,6 +24,7 @@ import Anthropic from "@anthropic-ai/sdk"
 import { validateExtensionToken } from "@/lib/extension-tokens"
 import { createServiceRoleClient } from "@/lib/supabase/service"
 import { setIfPresent } from "@/lib/sync-helpers"
+import { logExtraction } from "@/lib/extraction-log"
 import { STATES_BY_METHOD, TERMINAL_STATES } from "@/app/deals/deal-schema"
 
 // Same cap as /pdf-extract — 20MB base64 (~15MB PDF). The BoS lives in the same
@@ -88,33 +89,36 @@ const BOS_JSON_SCHEMA = {
 } as const
 
 const BOS_SYSTEM =
-  "You extract structured data from a US auto-dealership Bill of Sale. The single " +
-  "most important field is payment_type: whether the deal is a Retail Installment " +
-  "Sale Contract (financed) or a Cash sale. Read the payment-type indicator on the " +
-  "document — do not infer it from the presence of a lien."
+  "You extract structured data from a US auto-dealership Bill of Sale. These come " +
+  "from different dealer management systems (Frazer, Autosoft, and others), so labels " +
+  "and layout vary — identify each field by its MEANING, not by a fixed label or " +
+  "position. The single most important field is payment_type: whether the deal is " +
+  "financed (a Retail Installment Sale Contract) or a cash sale. Read the payment-" +
+  "method checkbox — a named lien holder alone does NOT make a deal financed."
 
-const BOS_PROMPT = `Extract these fields from the Bill of Sale.
+const BOS_PROMPT = `Extract these fields from the Bill of Sale. It may come from any dealer management system (e.g. Frazer or Autosoft), so labels and layout differ — find each field by what it MEANS, not by an exact label.
 
-payment_type — the most important field. Find the payment-type indicator (usually a checkbox or marked box):
-- "RISC" / "Retail Installment Sale Contract" selected → "risc"
-- "Cash" selected → "cash"
-Read the checkbox/selection on the document. A named lien holder does NOT make it RISC — a customer can pay the dealer cash while their own credit union holds a lien; that is still "cash".
+payment_type — the most important field. Find the payment-method indicator: a pair of checkboxes or marked boxes labeled some variation of "Cash" versus "Finance" / "Credit" / "RISC" / "Retail Installment".
+- If the Finance / Credit / RISC / Retail-Installment box is the selected one → "risc"
+- If the Cash box is the selected one → "cash"
+The checkbox is authoritative. A named lien holder or finance company does NOT by itself make it "risc": a customer can pay the dealer cash while their own bank or credit union holds a lien — if the Cash box is selected, payment_type is "cash" even when a lien holder is listed.
+- If no payment-method checkbox is present or legible: choose "risc" only when the document plainly shows dealer-arranged financing (an installment/finance section with an APR, a finance charge, or a scheduled monthly payment); otherwise "cash".
 
 Always present — extract them:
-- customer_first_name, customer_last_name
+- customer_first_name, customer_last_name — the buyer's name may be ALL CAPS or Mixed Case, and may be written "FIRST MIDDLE LAST", "FIRST LAST", or "LAST, FIRST MIDDLE". Put the first given name in customer_first_name and the remaining name(s) — including any middle name — in customer_last_name.
 - vehicle_year (number), vehicle_make, vehicle_model, vehicle_vin (17-char alphanumeric)
-- sale_price — total vehicle price including fees/taxes, BEFORE down payment and trade are applied
-- down_payment — total cash down
-- balance_due — amount still owed at signing (sale_price minus down_payment, minus trade value if applicable)
+- sale_price — total vehicle price including fees/taxes, BEFORE down payment and trade are applied (labels vary: "Vehicle Price", "Total Due", "Total Sale Price")
+- down_payment — total cash down or deposit
+- balance_due — amount still owed at signing after down payment and trade are applied (labels vary: "Balance Due", "Amount Financed", "Total Balance")
 
 Optional — use null only if truly absent:
 - co_buyer_name
-- stock_number
-- outside_lender_name — ONLY if Cash is selected AND a lien holder is named (e.g. "Navy Federal Credit Union" on a cash-paid deal). Leave null on RISC deals.
-- customer_business_name — if the buyer is a company rather than an individual; when set, use the contact/signer's name as customer_first_name / customer_last_name.
+- stock_number — labels vary ("Stock #", "Stock", "Account #"); the stock number and account number may be the same value
+- outside_lender_name — ONLY when payment_type is "cash" AND a lien holder / finance company is named (e.g. "Navy Federal Credit Union" from a "Lien Holder" section on a cash-paid deal). Leave null on financed ("risc") deals and on cash deals with no lien holder.
+- customer_business_name — if the buyer is a company rather than an individual; when set, use the contact/signer's name for customer_first_name / customer_last_name.
 
 Rules:
-- Currency values: just the number, no $ or commas.`
+- Currency values: return just the number, no "$" or commas (e.g. "$32,012.31" → 32012.31).`
 
 // When BoS flips the classification, keep the pipeline_state consistent with the
 // new payment_method (the dropdown filter + downstream logic assume validity).
@@ -288,6 +292,12 @@ export async function POST(request: Request) {
   const bosMethod: "financed" | "cash" =
     extracted.payment_type === "risc" ? "financed" : "cash"
   const paymentMethod: "financed" | "cash" = hasRouteoneProvenance ? "financed" : bosMethod
+
+  logExtraction("bos-extract", parsed.data.pdfBase64, extracted, {
+    payment_type: extracted.payment_type,
+    paymentMethod,
+    routeoneProvenance: hasRouteoneProvenance,
+  })
 
   // 6. Build the update. payment_method is authoritative (always written). For
   //    cash, balance_due is authoritative and amount_financed is cleared; for

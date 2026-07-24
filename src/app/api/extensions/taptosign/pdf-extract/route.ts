@@ -18,6 +18,7 @@ import Anthropic from "@anthropic-ai/sdk"
 import { validateExtensionToken } from "@/lib/extension-tokens"
 import { createServiceRoleClient } from "@/lib/supabase/service"
 import { setIfPresent } from "@/lib/sync-helpers"
+import { logExtraction } from "@/lib/extraction-log"
 import { matchLenderByName, type LenderRow } from "@/lib/lender-match"
 
 // 20MB of base64 (~15MB PDF). TaptoSign signed packages reach ~10MB base64; the
@@ -93,30 +94,32 @@ const EXTRACTION_JSON_SCHEMA = {
 
 const EXTRACTION_SYSTEM =
   "You extract structured data from a signed vehicle retail installment contract " +
-  "(RIC) and bill of sale. The financial fields are TILA-mandated and always " +
-  "present on a signed contract — extract them. Use null only for the three " +
-  "optional fields (co-buyer name, mileage, stock number) when truly absent."
+  "(RIC) and bill of sale. These come from different dealer management systems " +
+  "(Frazer, Autosoft, and others), so labels and layout vary — identify each field " +
+  "by its MEANING, not by a fixed label or position. The financial fields are TILA-" +
+  "mandated and always present on a signed RIC — extract them. Use null only for the " +
+  "three optional fields (co-buyer name, mileage, stock number) when truly absent."
 
-const EXTRACTION_PROMPT = `Extract these fields from the signed contract package (Retail Installment Contract + Bill of Sale).
+const EXTRACTION_PROMPT = `Extract these fields from the signed contract package (Retail Installment Contract + Bill of Sale). It may come from any dealer management system (e.g. Frazer or Autosoft), so labels and layout differ — find each field by what it MEANS.
 
 Always present on a signed RIC — extract all of them:
-- customer_first_name, customer_last_name
+- customer_first_name, customer_last_name — the buyer's name may be ALL CAPS or Mixed Case, and may be written "FIRST MIDDLE LAST", "FIRST LAST", or "LAST, FIRST MIDDLE". Put the first given name in customer_first_name and the remaining name(s), including any middle name, in customer_last_name.
 - vehicle_year (number), vehicle_make, vehicle_model, vehicle_vin (17 chars)
 - sale_price, down_payment (total cash down), amount_financed (decimals)
 - apr (percentage as a decimal, e.g. 10.99 not 0.1099)
 - term_months (number), monthly_payment (decimal)
-- lender_name (the funding source / creditor)
+- lender_name (the funding source / creditor / assignee)
 
 Optional — use null only if truly absent:
 - co_buyer_name
 - vehicle_mileage (as recorded)
-- stock_number
+- stock_number ("Stock #", "Stock", "Account #" — may equal the account number)
 
 Rules:
-- APR is the disclosed Annual Percentage Rate from the TILA disclosure box, not the buy rate.
-- amount_financed is the disclosed Amount Financed from the TILA disclosure, not the sale price.
-- lender_name is the creditor / finance source / assignee, not the dealer.
-- Currency values: just the number, no $ or commas.
+- The Federal Truth-in-Lending Disclosures section shows the TILA-mandated fields in a boxed layout — read apr as the disclosed Annual Percentage Rate there (not the buy rate) and amount_financed as the disclosed Amount Financed there (not the sale price).
+- The Payment Schedule section shows the number of payments and the payment amount — use them for term_months and monthly_payment.
+- lender_name is the ultimate assignee / creditor / finance source — check the ASSIGNMENT clause (typically near the bottom of the contract), which names the lender the contract is assigned to. This may differ from any "seller" or "creditor" listed at the top. It is never the dealer.
+- Currency values: return just the number, no "$" or commas (e.g. "$32,012.31" → 32012.31).
 - If a field appears in both the RIC and the Bill of Sale, prefer the RIC value.`
 
 export async function POST(request: Request) {
@@ -312,6 +315,11 @@ export async function POST(request: Request) {
   if (error) {
     return NextResponse.json({ error: "Could not save extracted data." }, { status: 500 })
   }
+
+  logExtraction("pdf-extract", parsed.data.pdfBase64, extracted, {
+    lenderMapped: !!matchedLenderId,
+    fieldsUpdated,
+  })
 
   return NextResponse.json({ extracted, fieldsUpdated })
 }
